@@ -45,7 +45,7 @@ export async function logout(page: Page): Promise<void> {
 
 async function pickUser(page: Page, user: TestUser): Promise<void> {
   await page.getByPlaceholder("Nom ou nom d'utilisateur (2 caractères min.)").fill(user.username);
-  await page.getByRole("button", { name: new RegExp(user.displayName) }).click();
+  await page.getByRole("button").filter({ hasText: user.displayName }).click();
 }
 
 export async function createPrivate(page: Page, other: TestUser): Promise<void> {
@@ -65,7 +65,7 @@ export async function createGroup(page: Page, title: string, members: TestUser[]
 
 /** Ouvre une conversation depuis la sidebar (elle doit y apparaître, en direct si besoin). */
 export async function openConversation(page: Page, title: string): Promise<void> {
-  await page.getByRole("navigation").getByRole("button", { name: new RegExp(`^${escapeRegExp(title)}`) }).click();
+  await conversationButton(page, title).click();
   await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
 }
 
@@ -79,8 +79,9 @@ export async function messageTexts(page: Page): Promise<string[]> {
   return page.locator("ol li p").allTextContents();
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Entrée de la sidebar pour une conversation (filtre texte, sans expression régulière construite). */
+export function conversationButton(page: Page, title: string) {
+  return page.getByRole("navigation").getByRole("button").filter({ hasText: title });
 }
 
 /**

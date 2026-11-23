@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  conversationButton,
   createGroup,
   createPrivate,
   cuttableRealtime,
@@ -94,7 +95,7 @@ test("un membre retiré cesse de recevoir les messages, sans recharger la page",
 
   // Chez Bob : la vue se ferme et la conversation disparaît de la liste, sans rechargement.
   await expect(pageB.getByText(`Vous avez été retiré de « ${title} ».`)).toBeVisible();
-  await expect(pageB.getByRole("navigation").getByRole("button", { name: new RegExp(title) })).toHaveCount(0);
+  await expect(conversationButton(pageB, title)).toHaveCount(0);
 
   // Un message envoyé ensuite ne lui parvient pas.
   await sendMessage(pageA, "message après le retrait");
