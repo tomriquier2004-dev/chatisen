@@ -1,0 +1,3 @@
+# Protège la CI/CD et l'infrastructure contre toute modification non relue
+/.github/workflows/ @Shamina934 @tomriquier2004-dev
+/infra/ @Shamina934 @tomriquier2004-dev
