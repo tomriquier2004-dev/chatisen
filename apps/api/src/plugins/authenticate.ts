@@ -9,7 +9,7 @@ declare module "fastify" {
   }
 }
 
-/** Lit `Authorization: Bearer <jwt>` ; à utiliser en `preHandler` sur chaque route protégée. */
+/** Lit `Authorization: Bearer <jwt>` ; à utiliser en `onRequest` sur chaque route protégée (avant la validation du corps). */
 export function makeAuthenticate(tokens: TokenService) {
   return async function authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
     const header = request.headers.authorization;
