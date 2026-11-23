@@ -13,6 +13,7 @@ Plateforme de communication temps réel : **messagerie**, **appels voix** et **v
 
 | Livrable | Où |
 | --- | --- |
+| Planning jusqu'à la soutenance (11 déc.) | [`docs/planning.md`](docs/planning.md) |
 | Suivi des 10 livrables | [`docs/DELIVERABLES.md`](docs/DELIVERABLES.md) |
 | Exigences numérotées | [`docs/requirements/requirements.md`](docs/requirements/requirements.md) |
 | Architecture cible | [`docs/architecture.md`](docs/architecture.md) |
