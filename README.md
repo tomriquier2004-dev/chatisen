@@ -23,6 +23,7 @@ Plateforme de communication temps réel : **messagerie**, **appels voix** et **v
 | Équipe, rôles, règles de décision | [`docs/team.md`](docs/team.md) |
 | Questions / réponses de l'encadrant | [`docs/prof-qa.md`](docs/prof-qa.md) |
 | Registre des risques | [`docs/risks.md`](docs/risks.md) |
+| Historique des versions | [`CHANGELOG.md`](CHANGELOG.md) |
 
 ## Structure du dépôt
 
