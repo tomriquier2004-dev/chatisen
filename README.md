@@ -16,6 +16,7 @@ Plateforme de communication temps réel : **messagerie**, **appels voix** et **v
 | Suivi des 10 livrables | [`docs/DELIVERABLES.md`](docs/DELIVERABLES.md) |
 | Exigences numérotées | [`docs/requirements/requirements.md`](docs/requirements/requirements.md) |
 | Architecture cible | [`docs/architecture.md`](docs/architecture.md) |
+| Design system (UI) | [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) |
 | Décisions d'architecture | [`docs/adr/`](docs/adr/) |
 | Rapport final (13 sections) | [`docs/report/`](docs/report/) |
 | Rapports de mesure | [`docs/reports/`](docs/reports/) |
