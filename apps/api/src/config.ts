@@ -32,11 +32,32 @@ const ConfigSchema = Type.Object({
    * derrière le reverse proxy : sinon un client pourrait choisir l'adresse comptée par la limite.
    */
   TRUST_PROXY: Type.Boolean({ default: false }),
+  /**
+   * Attribut Secure du cookie de refresh. Absent : activé partout sauf en development et test
+   * (issue #73). À ne désactiver explicitement que pour un environnement servi en HTTP local.
+   */
+  COOKIE_SECURE: Type.Optional(Type.Boolean()),
   ACCESS_TOKEN_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 900 }),
   REFRESH_TOKEN_TTL_DAYS: Type.Integer({ minimum: 1, maximum: 90, default: 30 }),
 });
 
-export type Config = Static<typeof ConfigSchema>;
+export type Config = Static<typeof ConfigSchema> & {
+  /** Variables remplies par les valeurs de développement plutôt que par l'environnement. */
+  readonly devDefaultsUsed: readonly string[];
+};
+
+/** Adresses d'écoute locales : seules celles-ci tolèrent les valeurs de développement. */
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/**
+ * Cookie Secure : explicite si COOKIE_SECURE est fourni ; sinon désactivé seulement en development
+ * ou test **sur une adresse locale**. Un serveur exposé garde Secure même si NODE_ENV a été oublié.
+ */
+export function secureCookies(config: Pick<Config, "COOKIE_SECURE" | "NODE_ENV" | "API_HOST">): boolean {
+  if (config.COOKIE_SECURE !== undefined) return config.COOKIE_SECURE;
+  const devLike = config.NODE_ENV === "development" || config.NODE_ENV === "test";
+  return !(devLike && LOCAL_HOSTS.has(config.API_HOST));
+}
 
 export class ConfigError extends Error {
   override name = "ConfigError";
@@ -60,8 +81,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const value = env[key];
     if (value !== undefined && value !== "") raw[key] = value;
   }
+  const devDefaultsUsed: string[] = [];
   if (raw.NODE_ENV !== "production") {
-    for (const [key, value] of Object.entries(DEV_DEFAULTS)) raw[key] ??= value;
+    for (const [key, value] of Object.entries(DEV_DEFAULTS)) {
+      if (raw[key] === undefined) {
+        raw[key] = value;
+        devDefaultsUsed.push(key);
+      }
+    }
   }
   const withDefaults = Value.Default(ConfigSchema, raw);
   const converted = Value.Convert(ConfigSchema, withDefaults);
@@ -70,5 +97,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const problems = [...Value.Errors(ConfigSchema, converted)].map((e) => `${e.path.slice(1)}: ${e.message}`);
     throw new ConfigError(`Configuration invalide : ${problems.join(" ; ")}`);
   }
-  return converted;
+  // Issue #73 : un serveur joignable depuis le réseau (API_HOST non local) ne démarre pas avec
+  // les valeurs de développement, même si NODE_ENV a été oublié. Une clé JWT tirée au hasard
+  // différerait d'une instance à l'autre et à chaque redémarrage.
+  const risky = devDefaultsUsed.filter((k) => k === "JWT_SECRET" || k === "DATABASE_URL");
+  if (!LOCAL_HOSTS.has(converted.API_HOST) && risky.length > 0) {
+    throw new ConfigError(
+      `Configuration invalide : API_HOST=${converted.API_HOST} n'est pas une adresse locale, ` +
+        `${risky.join(" et ")} doivent être fournis explicitement (NODE_ENV=production recommandé)`,
+    );
+  }
+  return { ...converted, devDefaultsUsed };
 }

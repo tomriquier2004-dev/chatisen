@@ -9,7 +9,7 @@ import {
   type ErrorCode,
 } from "@chatisen/shared";
 import cookie from "@fastify/cookie";
-import type { Config } from "./config";
+import { secureCookies, type Config } from "./config";
 import type { Db } from "./db";
 import { AppError } from "./errors";
 import { noopSessionEvents, type SessionEvents } from "./modules/auth/events";
@@ -131,7 +131,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
       await api.register(authRoutes, {
         tokens,
         refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
-        secureCookies: config.NODE_ENV === "production",
+        secureCookies: secureCookies(config),
         sessionEvents: deps.sessionEvents ?? noopSessionEvents,
         limits,
       });
