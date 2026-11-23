@@ -3,7 +3,12 @@ import { ConfigError, loadConfig } from "./config";
 
 describe("loadConfig", () => {
   it("applique les valeurs par défaut de développement", () => {
-    expect(loadConfig({})).toEqual({
+    const config = loadConfig({});
+    expect(config.JWT_SECRET.length).toBeGreaterThanOrEqual(32);
+    expect(config).toEqual({
+      JWT_SECRET: config.JWT_SECRET,
+      ACCESS_TOKEN_TTL_SECONDS: 900,
+      REFRESH_TOKEN_TTL_DAYS: 30,
       NODE_ENV: "development",
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
@@ -26,8 +31,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ LOG_LEVEL: "verbose" })).toThrow(ConfigError);
   });
 
-  it("exige DATABASE_URL en production, sans valeur par défaut", () => {
+  it("exige DATABASE_URL et JWT_SECRET en production, sans valeur par défaut", () => {
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/);
+    expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/JWT_SECRET/);
+  });
+
+  it("refuse une clé JWT trop courte", () => {
+    expect(() => loadConfig({ JWT_SECRET: "court" })).toThrow(/JWT_SECRET/);
   });
 
   it("ne répète pas la valeur fautive dans le message d'erreur", () => {
