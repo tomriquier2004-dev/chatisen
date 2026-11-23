@@ -22,4 +22,8 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": "error",
     },
   },
+  {
+    files: ["apps/web/src/**"],
+    languageOptions: { globals: { ...globals.browser } },
+  },
 );

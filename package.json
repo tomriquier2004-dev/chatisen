@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "pnpm -r --parallel --stream dev",
     "lint": "eslint .",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
