@@ -71,7 +71,7 @@ bash infra/backup/restore-test.sh                       # 500 000 messages par d
 RESTORE_TEST_ROWS=2000000 bash infra/backup/restore-test.sh
 ```
 
-Le script crée une base jetable, la peuple, la sauvegarde avec une clé age jetable, restaure dans une seconde base vierge, compare le nombre de lignes de chaque table et une empreinte MD5 du contenu des messages, puis affiche les durées. Il tourne sous Linux ou WSL avec Docker. Résultats et limites : [`docs/reports/backup-restore-test.md`](../reports/backup-restore-test.md).
+Le script crée une base jetable, la peuple, la sauvegarde avec une clé age jetable, restaure dans une seconde base vierge, compare le nombre de lignes de chaque table et une empreinte MD5 du contenu des messages, puis affiche les durées. Il tourne sous Linux, macOS ou WSL avec Docker (les durées côté hôte utilisent `date +%s%N`, ou perl quand `date` ne le permet pas, comme sur macOS). Résultats et limites : [`docs/reports/backup-restore-test.md`](../reports/backup-restore-test.md).
 
 ### Limites actuelles
 
