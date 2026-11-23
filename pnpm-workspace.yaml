@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Durcissement supply-chain (recommandations Semgrep / pnpm)
+minimumReleaseAge: 10080        # attendre 7 jours avant d'installer une version fraîchement publiée
+blockExoticSubdeps: true        # interdit les sous-dépendances git/tarball non fiables
+trustPolicy: no-downgrade       # refuse une mise à jour qui dégrade les garanties de publication
