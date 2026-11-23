@@ -221,6 +221,8 @@ Convention : `domaine:action`. Les événements client → serveur utilisent l'*
 | S → C | `message:new` | `Message` | Diffusion aux membres (FR-05) |
 | C → S | `conversation:sync` | `{ conversationId, afterSeq }` → ack `Message[]` | Rattrapage après coupure (FR-17) |
 | C → S | `message:read` | `{ conversationId, seq }` | Accusé de lecture |
+| S → C | `conversation:member-added` | `{ conversationId, userId, role, by }` | Un membre a été ajouté ; reçu aussi par le membre ajouté (FR-16, § 5.3) |
+| S → C | `conversation:member-removed` | `{ conversationId, userId, by, reason }` | Un membre a été retiré ou a quitté ; reçu aussi par le membre retiré (FR-03, FR-16, § 5.3) |
 | S → C | `presence:update` | `{ userId, status }` | Présence |
 | C ↔ S | `typing:start` / `typing:stop` | `{ conversationId }` | Indicateur de saisie |
 | C → S | `call:invite` | `{ conversationId, media }` → ack `{ callId }` | Démarrer un appel (FR-09, FR-10) |
@@ -230,7 +232,38 @@ Convention : `domaine:action`. Les événements client → serveur utilisent l'*
 | C ↔ S | `rtc:ice-candidate` | `{ callId, to, candidate }` | Candidats ICE |
 | S → C | `call:ended` | `{ callId, reason }` | Fin d'appel |
 
-Rooms Socket.IO : `user:<userId>` (toutes les connexions d'un utilisateur, pour les notifications et la sonnerie) et `conv:<conversationId>` (diffusion des messages). Le serveur fait rejoindre les rooms `conv:*` **lui-même**, d'après la base, au handshake : le client ne choisit jamais les rooms qu'il écoute (FR-03).
+Rooms Socket.IO : `user:<userId>` (toutes les connexions d'un utilisateur, pour les notifications et la sonnerie) et `conv:<conversationId>` (diffusion des messages). Le serveur fait rejoindre les rooms `conv:*` **lui-même**, d'après la base, au handshake : le client ne choisit jamais les rooms qu'il écoute (FR-03). Quand l'appartenance change pendant qu'un membre est connecté, le serveur met ses rooms à jour en direct (§ 5.3).
+
+### 5.3 Changement d'appartenance pendant qu'un membre est connecté (FR-03, FR-16, NFR-04)
+
+Le handshake ne suffit pas : un membre retiré d'un groupe resterait dans la room `conv:<id>` jusqu'à sa reconnexion et continuerait à recevoir `message:new`. C'est une **fuite d'accès** à une conversation privée. Règle : **l'appartenance en base est la seule source de vérité, et les rooms la suivent en direct**, sans attendre une reconnexion.
+
+**Déclencheurs.** Toute écriture dans `conversation_members` : `POST /conversations/:id/members` (ajout), `DELETE /conversations/:id/members/:userId` (retrait par un owner/admin, ou départ volontaire quand `userId` est soi-même), création d'une conversation, suppression d'une conversation. Un changement de rôle ne touche pas aux rooms.
+
+**Retrait d'un membre** — dans cet ordre :
+
+1. Transaction : `DELETE FROM conversation_members …`, puis **commit**.
+2. Après le commit, l'instance qui a traité la requête appelle `io.in("user:<userId>").socketsLeave("conv:<conversationId>")`. Avec l'adapter Redis, l'opération est **relayée à toutes les instances** : toutes les sockets de l'utilisateur quittent la room, quelle que soit l'instance où elles sont connectées. À partir de là, il ne reçoit plus de `message:new` pour cette conversation.
+3. Émission de `conversation:member-removed` à `user:<userId>` (le client retire la conversation de sa liste et ferme la vue si elle est ouverte), puis à `conv:<conversationId>` (les membres restants mettent à jour la liste des membres).
+4. Si le membre retiré est dans un appel de cette conversation, le serveur le sort de l'appel (`call:ended { reason: "removed" }`) : la signalisation lui est refusée, même si le média P2P déjà établi ne peut être coupé que par ses pairs, qui reçoivent aussi l'événement et ferment la connexion.
+
+**Ajout d'un membre** — même schéma, sens inverse : commit, puis `io.in("user:<userId>").socketsJoin("conv:<conversationId>")` (relayé par Redis), puis `conversation:member-added` à `user:<userId>` et à `conv:<conversationId>`. Le client ajouté affiche la conversation et charge l'historique par REST (`GET /conversations/:id/messages`) ; **aucune reconnexion n'est nécessaire**.
+
+**Autorisation à chaque événement entrant** (défense en profondeur). Être dans une room ne donne aucun droit. Chaque événement client → serveur qui porte un `conversationId` (`message:send`, `conversation:sync`, `message:read`, `typing:*`, `call:invite`) revérifie l'appartenance en base au moment de l'émission, et renvoie `CONVERSATION_FORBIDDEN` dans l'ack sinon. Un membre retiré ne peut donc ni écrire, ni rattraper l'historique par `conversation:sync`, même si une socket était restée dans la room par erreur. Si un cache d'appartenance est ajouté pour la performance, il est invalidé dans la même étape 2 que les rooms.
+
+**Courses et cas limites.**
+
+- **Message envoyé pendant le retrait** : un message dont la transaction est validée avant celle du retrait peut encore être livré au membre retiré ; ceux validés après ne le sont pas. La frontière est le commit du retrait, c'est le comportement attendu.
+- **Reconnexion pendant le retrait** : le handshake relit l'appartenance en base. Une socket qui se connecte après le commit ne rejoint pas la room ; une socket qui se connecte juste avant est couverte par l'étape 2.
+- **Message Redis perdu** : l'adapter Redis repose sur le pub/sub, sans garantie de livraison. Si une instance manque le `socketsLeave` (coupure Redis), une socket peut rester dans la room. Garde-fous : l'autorisation à chaque événement entrant (ci-dessus), et la déconnexion à l'expiration de l'access token (15 min, § 6.1) qui force un nouveau handshake depuis la base. La fenêtre d'exposition est donc **bornée à 15 minutes** dans ce cas de panne ; elle est à signaler dans le rapport sécurité.
+- **Déconnexion forcée** : quand ce n'est plus une conversation mais le compte ou la session qui perd ses droits (logout, révocation d'une famille de refresh tokens, compte désactivé), le serveur appelle `io.in("user:<userId>").disconnectSockets(true)`, relayé lui aussi à toutes les instances.
+- **Suppression d'une conversation** : `io.in("conv:<conversationId>").socketsLeave("conv:<conversationId>")` après le commit, puis `conversation:member-removed { reason: "deleted" }` à chaque ancien membre.
+
+**Tests attendus** (à écrire avec le code de `apps/api/src/realtime/`, issue #7). Deux instances d'API derrière un même Redis, deux clients connectés sur deux instances différentes :
+
+- retrait : B est retiré par A via REST ; B reçoit `conversation:member-removed` ; un message envoyé ensuite par A **n'arrive pas** chez B ; `message:send` et `conversation:sync` de B sont refusés ;
+- ajout : C est ajouté pendant qu'il est connecté ; il reçoit `conversation:member-added` puis le message suivant envoyé dans la conversation, **sans reconnexion** ;
+- les deux cas sont joués avec le client concerné sur l'instance qui **n'a pas** traité la requête REST, pour prouver le relais par l'adapter Redis.
 
 ---
 
@@ -415,7 +448,7 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 | Interception réseau | TLS partout (Caddy) ; WSS ; média chiffré **DTLS-SRTP** (imposé par WebRTC) | Le relais TURN voit les métadonnées (IP, volume), pas le contenu |
 | Vol de mot de passe | Argon2id ; rate limiting sur `/auth/*` (`@fastify/rate-limit`, compteurs dans Redis) | Pas de MFA dans le périmètre Core |
 | Vol de session | Access token court en mémoire ; refresh token en cookie `httpOnly` avec rotation et détection de réutilisation | Un XSS peut encore utiliser le token tant que la page est ouverte |
-| Accès à une conversation d'autrui (IDOR) | Vérification d'appartenance **côté serveur** sur chaque route et chaque événement ; rooms choisies par le serveur | — |
+| Accès à une conversation d'autrui (IDOR) | Vérification d'appartenance **côté serveur** sur chaque route et chaque événement ; rooms choisies par le serveur et mises à jour en direct quand un membre est ajouté ou retiré (§ 5.3) | Si Redis perd un `socketsLeave`, un membre retiré peut encore recevoir des messages jusqu'à l'expiration de son access token (15 min max) |
 | Injection / payload malformé | Validation par schéma (TypeBox) sur tout le REST et tous les événements ; requêtes paramétrées | — |
 | XSS | Échappement par défaut de Preact (aucun `dangerouslySetInnerHTML`) ; CSP stricte servie par Caddy | — |
 | Abus TURN (relais ouvert) | Identifiants éphémères HMAC ; `denied-peer-ip` sur les plages privées | — |
@@ -461,14 +494,14 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 
 | Exigence | Composant(s) | Section |
 | --- | --- | --- |
-| FR-01 à FR-04 | API `auth`, table `sessions`, cookie refresh | § 6.1, § 9 |
+| FR-01 à FR-04 | API `auth`, table `sessions`, cookie refresh ; contrôle d'accès aux rooms (FR-03) | § 5.3, § 6.1, § 9 |
 | FR-05 à FR-08 | Socket.IO, table `messages`, historique paginé | § 5, § 6.2 |
 | FR-09 à FR-11 | Signalisation Socket.IO, WebRTC, coturn | § 6.4 |
 | FR-12 | Mesh ou SFU (ouvert) | § 7 |
 | FR-13 | `getStats`, `call_quality_samples` | § 4, § 6.4 |
 | FR-14 | Hors architecture initiale (extension non retenue à ce stade) | — |
 | FR-15 | `getDisplayMedia` + `replaceTrack` | § 6.4 |
-| FR-16 | `conversation_members.role` | § 4, § 5.1 |
+| FR-16 | `conversation_members.role`, join / leave dynamiques des rooms | § 4, § 5.1, § 5.3 |
 | FR-17 | Reconnexion Socket.IO + `conversation:sync` + idempotence | § 6.3 |
 | FR-18 | Format d'erreur unique, contraintes d'unicité | § 4, § 5.1 |
 | NFR-01, NFR-02 | API sans état, adapter Redis, métriques | § 10 |
