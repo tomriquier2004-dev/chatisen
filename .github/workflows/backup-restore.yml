@@ -1,0 +1,33 @@
+name: Backup restore test
+
+# Prouve que les sauvegardes PostgreSQL se restaurent (issue #9, NFR-03, NFR-04).
+# Une sauvegarde jamais restaurée n'est pas une sauvegarde : le test tourne à chaque
+# changement de infra/backup et chaque lundi.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/backup/**"
+      - ".github/workflows/backup-restore.yml"
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  restore-test:
+    name: Restauration PostgreSQL de bout en bout
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Sauvegarde chiffrée puis restauration vérifiée
+        run: bash infra/backup/restore-test.sh
