@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationView, Message } from "@chatisen/shared";
-import { applyMessage, markRead, memberActions, previewOf, sortByActivity, titleOf } from "./model";
+import { applyMessage, markRead, memberActions, previewOf, reconcile, sortByActivity, titleOf } from "./model";
 
 const ME = "11111111-1111-4111-8111-111111111111";
 const BOB = "22222222-2222-4222-8222-222222222222";
@@ -81,5 +81,29 @@ describe("actions proposées selon le rôle", () => {
 
   it("un membre simple ne voit aucune action sur les autres", () => {
     expect(memberActions("member", { role: "member", isMe: false })).toEqual({ remove: false, promote: false, demote: false, leave: false });
+  });
+});
+
+describe("reconcile (reconnexion, #98)", () => {
+  const a = conv("a", "2026-01-01T00:00:00Z");
+  const b = conv("b", "2026-01-02T00:00:00Z");
+  const c = conv("c", "2026-01-03T00:00:00Z", { unreadCount: 2 });
+
+  it("prend la liste du serveur : conversation ajoutée et non-lus à jour", () => {
+    const { list, lostSelected } = reconcile([a, b], [a, b, c], "a");
+    expect(list.map((x) => x.id)).toEqual(["c", "b", "a"]);
+    expect(list[0]?.unreadCount).toBe(2);
+    expect(lostSelected).toBeNull();
+  });
+
+  it("signale la conversation ouverte dont on n'est plus membre", () => {
+    const { list, lostSelected } = reconcile([a, b], [b], "a");
+    expect(list.map((x) => x.id)).toEqual(["b"]);
+    expect(lostSelected?.id).toBe("a");
+  });
+
+  it("garde à zéro les non-lus de la conversation ouverte", () => {
+    const { list } = reconcile([c], [c], "c");
+    expect(list[0]?.unreadCount).toBe(0);
   });
 });

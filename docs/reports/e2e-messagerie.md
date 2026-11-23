@@ -22,6 +22,7 @@ Valider, dans de vrais navigateurs, les parcours que les tests d'API et de temps
 | 2 | Message en direct entre deux navigateurs | Alice crée une conversation privée ; elle **apparaît chez Bob sans rechargement** ; un message envoyé de chaque côté est reçu en direct de l'autre | ✅ |
 | 3 | **Fiabilité : coupure réseau** | Bob perd sa connexion temps réel (bandeau « Connexion perdue ») ; Alice envoie 3 messages ; au rétablissement, Bob reçoit les messages manqués **dans l'ordre et sans doublon** (liste exacte vérifiée) | ✅ |
 | 4 | **Accès : membre retiré** | Le propriétaire retire Bob d'un groupe ; chez Bob, la vue se ferme avec « Vous avez été retiré de … » et la conversation disparaît, **sans rechargement** ; le message envoyé ensuite ne lui parvient pas | ✅ |
+| 5 | **Liste après une coupure** (#98) | Pendant la coupure de Bob, Alice écrit dans un groupe et crée une conversation privée avec lui ; au rétablissement, **sans rechargement**, la conversation privée apparaît et le groupe montre l'aperçu et 1 non-lu | ✅ |
 
 Exécution locale du 2026-11-23 (Windows 11, Chromium de Playwright 1.65.1, Postgres et Redis en conteneurs) :
 - 4 tests réussis en 18,7 s ;
