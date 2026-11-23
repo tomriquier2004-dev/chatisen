@@ -1,61 +1,35 @@
 import { useEffect, useState } from "preact/hooks";
-import styles from "./App.module.css";
-import { checkApiHealth, type ApiHealth } from "./lib/health";
+import { api, realtime, useSession } from "./app/services";
+import { AuthScreen } from "./features/auth/AuthScreen";
+import { Shell } from "./features/shell/Shell";
 
-const HEALTH_LABEL: Record<ApiHealth, string> = {
-  checking: "API : vérification…",
-  up: "API : opérationnelle",
-  down: "API : injoignable",
-};
-
-type Theme = "light" | "dark";
-
-/** Page d'accueil provisoire du squelette : montre les tokens et que le web joint l'API. */
+/**
+ * Racine de l'application : restaure la session au chargement (cookie de refresh httpOnly),
+ * puis affiche la connexion ou l'espace connecté. La socket suit la session.
+ */
 export function App() {
-  const [health, setHealth] = useState<ApiHealth>("checking");
-  const [theme, setTheme] = useState<Theme>("light");
+  const session = useSession();
+  const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    void checkApiHealth().then((result) => {
-      if (!cancelled) setHealth(result);
-    });
-    return () => {
-      cancelled = true;
-    };
+    void api
+      .restore()
+      .catch(() => null)
+      .finally(() => setRestoring(false));
   }, []);
 
+  const signedIn = session !== null;
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    if (signedIn) realtime.connect();
+    else realtime.disconnect();
+  }, [signedIn]);
 
-  const badgeClass = [styles.badge, health === "up" && styles.up, health === "down" && styles.down]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <main class={styles.page}>
-      <section class={styles.card}>
-        <div class={styles.brand}>
-          <span class={styles.logo} aria-hidden="true">
-            C
-          </span>
-          <h1 class={styles.title}>ChatISEN</h1>
-        </div>
-        <p class={styles.lead}>Messagerie, appels voix et visio. L'application arrive bientôt.</p>
-        <div class={styles.footer}>
-          <span class={badgeClass} role="status">
-            {HEALTH_LABEL[health]}
-          </span>
-          <button
-            type="button"
-            class={styles.themeToggle}
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-          >
-            Thème {theme === "light" ? "sombre" : "clair"}
-          </button>
-        </div>
-      </section>
-    </main>
-  );
+  if (restoring) {
+    return (
+      <p role="status" style={{ padding: "var(--space-8)", color: "var(--color-text-secondary)" }}>
+        Chargement…
+      </p>
+    );
+  }
+  return session ? <Shell session={session} /> : <AuthScreen />;
 }

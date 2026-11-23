@@ -1,0 +1,131 @@
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  height: 100vh;
+}
+
+/* Sidebar : fond canvas, sections Privées / Groupes (design system § 5.1 et § 5.2). */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-4);
+  background: var(--color-bg-canvas);
+  border-right: var(--border-subtle);
+  overflow-y: auto;
+}
+
+.me {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.meName {
+  font: var(--text-heading);
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+.section {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+}
+
+.item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.active {
+  background: var(--color-brand-soft);
+}
+
+.itemTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Badge de non-lus : pilule dorée avec compteur, rien d'animé (design system § 5.2). */
+.badge {
+  min-width: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-primary);
+  color: var(--color-brand-ink);
+  font: var(--text-caption);
+  font-weight: 600;
+  text-align: center;
+}
+
+.empty,
+.error {
+  margin: 0;
+  padding: 0 var(--space-2);
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-status-danger);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.main > :last-child {
+  flex: 1;
+  min-height: 0;
+}
+
+.banner {
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  font: var(--text-caption);
+  color: var(--color-status-warning);
+  background: var(--color-status-warning-bg);
+}
+
+.placeholder {
+  margin: auto;
+  color: var(--color-text-secondary);
+}
