@@ -2,6 +2,8 @@
 # Restauration d'une sauvegarde chiffrée dans la base désignée par PGHOST / PGDATABASE.
 # Usage : restore.sh <fichier.dump.age> <fichier-identité-age>
 # ATTENTION : --clean supprime les objets existants de la base cible avant de les recréer.
+# Garde-fou (issue #44) : RESTORE_CONFIRM doit valoir le nom de la base cible (PGDATABASE),
+# sinon le script refuse de tourner. Une variable mal positionnée ne suffit plus à écraser une base.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -16,6 +18,12 @@ if [[ -n "${PGPASSWORD_FILE:-}" ]]; then
   export PGPASSWORD
 fi
 : "${PGHOST:?PGHOST requis}" "${PGUSER:?PGUSER requis}" "${PGDATABASE:?PGDATABASE requis}"
+
+if [[ "${RESTORE_CONFIRM:-}" != "$PGDATABASE" ]]; then
+  echo "Refus : cette restauration EFFACE la base « $PGDATABASE » sur « $PGHOST » avant de la recréer." >&2
+  echo "Pour confirmer, relancer avec RESTORE_CONFIRM=$PGDATABASE" >&2
+  exit 3
+fi
 
 # Intégrité : refuse un fichier tronqué ou altéré.
 if [[ -f "${file}.sha256" ]]; then
