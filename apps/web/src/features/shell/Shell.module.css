@@ -36,6 +36,12 @@
   text-decoration: underline;
 }
 
+/* Choix du thème en pied de sidebar, à l'écart des conversations. */
+.theme {
+  margin-top: auto;
+  align-self: stretch;
+}
+
 .section {
   margin: 0 0 var(--space-2);
   padding: 0 var(--space-2);

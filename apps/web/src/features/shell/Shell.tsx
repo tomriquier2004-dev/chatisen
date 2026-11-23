@@ -7,6 +7,7 @@ import { MembersDialog } from "../conversations/MembersDialog";
 import { NewConversationDialog } from "../conversations/NewConversationDialog";
 import { previewOf, titleOf } from "../conversations/model";
 import { useConversations } from "../conversations/useConversations";
+import { ThemeToggle } from "../theme/ThemeToggle";
 import styles from "./Shell.module.css";
 
 export { titleOf } from "../conversations/model";
@@ -85,6 +86,7 @@ export function Shell({ session }: { session: Session }) {
             </nav>
           );
         })}
+        <ThemeToggle class={styles.theme} />
       </aside>
 
       <main class={styles.main}>
