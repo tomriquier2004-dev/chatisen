@@ -13,13 +13,17 @@ export interface ChatViewProps {
   conversation: ConversationView;
   meId: string;
   title: string;
+  /** Appelé avec le dernier seq affiché quand la vue est visible : accusé de lecture. */
+  onRead?: (seq: number) => void;
+  /** Ouvre la gestion des membres (groupes seulement). */
+  onShowMembers?: (() => void) | undefined;
 }
 
 /**
  * Vue de chat (issue #80) : historique paginé, envoi optimiste confirmé par le `seq` serveur,
  * réception en direct, rattrapage après coupure (géré par `Realtime`), erreurs lisibles (FR-18).
  */
-export function ChatView({ conversation, meId, title }: ChatViewProps) {
+export function ChatView({ conversation, meId, title, onRead, onShowMembers }: ChatViewProps) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasOlder, setHasOlder] = useState(false);
@@ -127,6 +131,18 @@ export function ChatView({ conversation, meId, title }: ChatViewProps) {
     void send(crypto.randomUUID(), body);
   }
 
+  // Accusé de lecture : le dernier message affiché, quand l'onglet est visible.
+  const sentSeq = lastSeqOf(items);
+  useEffect(() => {
+    if (sentSeq === 0 || !onRead) return;
+    const report = () => {
+      if (document.visibilityState === "visible") onRead(sentSeq);
+    };
+    report();
+    document.addEventListener("visibilitychange", report);
+    return () => document.removeEventListener("visibilitychange", report);
+  }, [sentSeq, onRead]);
+
   const names = new Map(conversation.members.map((m) => [m.user.id, m.user.displayName]));
   const sent = lastSeqOf(items);
 
@@ -137,8 +153,15 @@ export function ChatView({ conversation, meId, title }: ChatViewProps) {
           {title}
         </h2>
         <span class={styles.subtitle}>
-          {conversation.type === "group" ? `${conversation.members.length} membres` : "Conversation privée"}
+          {conversation.type === "group"
+            ? `${conversation.members.length} membre${conversation.members.length > 1 ? "s" : ""}`
+            : "Conversation privée"}
         </span>
+        {onShowMembers && (
+          <button type="button" class={`${styles.secondary} ${styles.headerAction}`} onClick={onShowMembers}>
+            Membres
+          </button>
+        )}
       </header>
 
       <ol

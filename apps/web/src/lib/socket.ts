@@ -114,6 +114,18 @@ export class Realtime {
     return res.data;
   }
 
+  /** Accusé de lecture jusqu'à `seq` ; renvoie le lastReadSeq retenu par le serveur, ou null si refusé. */
+  async markRead(conversationId: string, seq: number): Promise<number | null> {
+    try {
+      const res = (await this.socket
+        .timeout(this.ackTimeoutMs)
+        .emitWithAck("message:read", { conversationId, seq })) as Ack<{ lastReadSeq: number }>;
+      return res.ok ? res.data.lastReadSeq : null;
+    } catch {
+      return null;
+    }
+  }
+
   private deliver(m: Message): void {
     if (this.lastSeq.has(m.conversationId)) this.track(m.conversationId, m.seq);
     for (const l of this.messageListeners) l(m);
