@@ -25,7 +25,7 @@ _À rédiger._
 | Planification | Service Compose `postgres-backup` : une sauvegarde au démarrage, puis toutes les 6 h (`BACKUP_INTERVAL_SECONDS`) |
 | Stockage | Volume `pg-backups`, **distinct** du volume de la base `pg-data` ; fichier `chatisen-<horodatage UTC>.dump.age` + `.sha256` |
 | Rétention | 7 jours (`BACKUP_RETENTION_DAYS`), purge uniquement après une sauvegarde réussie |
-| Objectifs | **RPO** (perte de données max) = 6 h · **RTO** (durée de restauration) : mesuré par le test, voir ci-dessous |
+| Objectifs | **RPO** (perte de données max) = 6 h · **RTO** technique mesuré : 2,4 s pour 500 000 messages (déchiffrement + `pg_restore`, [rapport](../reports/backup-restore-test.md)) ; le RTO réel inclut les étapes humaines ci-dessous |
 | Supervision | Healthcheck Docker : `unhealthy` si aucune sauvegarde réussie depuis 2 intervalles ; logs JSON (`backup_succeeded`, `backup_failed`) |
 | Preuve | Workflow [`backup-restore.yml`](../../.github/workflows/backup-restore.yml) : sauvegarde chiffrée, restauration dans une base vierge et comparaison des données, à chaque PR qui touche `infra/backup/` et chaque lundi |
 
