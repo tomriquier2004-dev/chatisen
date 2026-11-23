@@ -20,6 +20,7 @@ pnpm lint         # ESLint sur tout le dépôt
 pnpm typecheck    # tsc --noEmit dans chaque paquet
 pnpm test         # Vitest dans chaque paquet
 pnpm build        # build de chaque paquet qui en a un
+pnpm --filter @chatisen/web test:e2e   # parcours Playwright (pnpm db:up avant ; « playwright install chromium » la première fois)
 ```
 
 Ce sont les mêmes commandes que le job CI « Lint, typecheck, tests ».
