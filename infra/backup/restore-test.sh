@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test de restauration de bout en bout (issue #9) : base peuplée -> sauvegarde chiffrée ->
 # restauration dans une base vierge -> comparaison des données -> temps mesurés.
-# Prérequis : Docker + Compose v2, Linux (ou WSL). Usage : bash infra/backup/restore-test.sh
+# Prérequis : Docker + Compose v2, bash, sous Linux, macOS ou WSL. Usage : bash infra/backup/restore-test.sh
 # Variable : RESTORE_TEST_ROWS (nombre de messages, multiple de 100, défaut 500000).
 # Tout est jetable : mot de passe et clé age générés à la volée, volumes supprimés à la fin.
 set -euo pipefail
@@ -23,7 +23,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-now_ms() { echo $(($(date +%s%N) / 1000000)); }
+# Horloge en millisecondes, portable (issue #45) : `date +%s%N` n'existe pas sur macOS (BSD date
+# imprime « N » tel quel). Perl est présent sur macOS et sur les runners Linux.
+if date +%s%N | grep -q '^[0-9]\+$'; then
+  now_ms() { echo $(($(date +%s%N) / 1000000)); }
+elif command -v perl >/dev/null 2>&1; then
+  now_ms() { perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'; }
+else
+  echo "Ni « date +%s%N » ni perl : impossible de mesurer les durées en millisecondes." >&2
+  exit 1
+fi
 fingerprint() {
   # Nombre de lignes par table + empreinte du contenu des messages, dans un ordre stable.
   "${dc[@]}" exec -T "$1" psql -U chatisen -d "$2" -At -v ON_ERROR_STOP=1 -c "
@@ -65,9 +74,19 @@ echo "== Restauration de ${latest} dans une base vierge"
 t0=$(now_ms)
 "${dc[@]}" run --rm -T \
   -v "$work/key.txt:/run/secrets/age-identity:ro" \
-  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore \
+  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore -e RESTORE_CONFIRM=chatisen_restore \
   --entrypoint restore.sh postgres-backup "$latest" /run/secrets/age-identity
 restore_ms=$(($(now_ms) - t0))
+
+echo "== Garde-fou : une restauration sans confirmation est refusée"
+if "${dc[@]}" run --rm -T \
+  -v "$work/key.txt:/run/secrets/age-identity:ro" \
+  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore -e RESTORE_CONFIRM=chatisen \
+  --entrypoint restore.sh postgres-backup "$latest" /run/secrets/age-identity 2>"$work/refused.log"; then
+  echo "ÉCHEC : restore.sh a accepté une confirmation qui ne correspond pas à la base cible" >&2
+  exit 1
+fi
+grep -q "RESTORE_CONFIRM=chatisen_restore" "$work/refused.log"
 
 echo "== Vérification"
 target_fp="$(fingerprint postgres-restore chatisen_restore)"

@@ -529,13 +529,13 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 
 | # | Décision | Statut |
 | --- | --- | --- |
-| ADR-0002 | Client : Preact + Vite plutôt que React / Svelte (avec mesures de bundle) | acté, à rédiger |
-| ADR-0003 | Serveur : Node + TypeScript + Fastify plutôt qu'Express / NestJS | acté, à rédiger |
+| [ADR-0002](adr/0002-client-preact-vite.md) | Client : Preact + Vite plutôt que React / Svelte (avec mesures de bundle) | accepté |
+| [ADR-0003](adr/0003-serveur-fastify.md) | Serveur : Node + TypeScript + Fastify plutôt qu'Express / NestJS | accepté |
 | ADR-0004 | Temps réel : Socket.IO plutôt que WebSocket brut / SSE | proposé |
-| ADR-0005 | Contrats partagés : TypeBox plutôt que Zod | proposé |
-| ADR-0006 | Données : PostgreSQL + Redis | proposé |
-| ADR-0007 | Sessions : JWT court + refresh token rotatif en cookie | proposé |
-| ADR-0008 | Ordre et idempotence des messages (`seq` + `client_msg_id`) | proposé |
+| [ADR-0005](adr/0005-contrats-typebox.md) | Contrats partagés : TypeBox plutôt que Zod | proposé, rédigé |
+| [ADR-0006](adr/0006-donnees-postgresql-redis-kysely.md) | Données : PostgreSQL + Redis, accès Kysely, migrations au démarrage | proposé, rédigé |
+| [ADR-0007](adr/0007-sessions-jwt-refresh-rotatif.md) | Sessions : JWT court + refresh token rotatif en cookie | proposé, rédigé |
+| [ADR-0008](adr/0008-ordre-idempotence-messages.md) | Ordre et idempotence des messages (`seq` + `client_msg_id`) | proposé, rédigé |
 | ADR-0009 | Média : WebRTC P2P + coturn, identifiants éphémères | proposé |
 | ADR-0010 | Conférences : mesh vs SFU | ouvert |
 | ADR-0011 | Multi-instance : sticky sessions vs WebSocket seul | ouvert |
