@@ -12,7 +12,7 @@
 2. **Respiration et clarté (Densité très aérée)** : Des marges généreuses, des séparations nettes et une absence de surcharge cognitive.
 3. **Le jaune comme signature, jamais comme bruit** : Le doré `#F4C842` incarne l'identité ISEN et signale les actions principales ou les repères d'identité. Il n'est jamais utilisé comme couleur de fond massive.
 4. **Sobriété structurée** : Des cartes et boutons aux contours nets (`1px`), des rayons de bordure modérés (`8px` à `12px`) et des ombres quasi inexistantes.
-5. **Séparation stricte des contextes** : L'expérience utilisateur (Messagerie, Contacts, Profil, Appels) est visuellement et fonctionnellement isolée de l'espace d'Administration réservé aux développeurs.
+5. **Séparation stricte des contextes** : L'application n'expose que l'expérience utilisateur (Messagerie, Contacts, Profil, Appels). L'observabilité reste dans Grafana, hors de l'application (voir § 5.5).
 
 ---
 
@@ -54,7 +54,7 @@ Utilisée exclusivement pour les statuts de présence, la qualité d'appel, l'é
 | `--color-status-warning-bg` | Fond alerte doux | `#FEF3C7` | Pastilles d'avertissement |
 | `--color-status-danger` | Corail / Rouge | `#DC2626` | Raccrocher, suppression, qualité faible, service hors-ligne |
 | `--color-status-danger-bg` | Fond danger doux | `#FEE2E2` | Pastilles d'erreur critique |
-| `--color-status-info` | Bleu Ardoise | `#2563EB` | Badges développeur / administration, liens Grafana |
+| `--color-status-info` | Bleu Ardoise | `#2563EB` | Étiquettes techniques, liens Grafana |
 | `--color-status-info-bg` | Fond info doux | `#DBEAFE` | Étiquettes techniques |
 
 ### 2.4 Architecture Thème Sombre (Préparée)
@@ -76,17 +76,17 @@ Utilisée exclusivement pour les statuts de présence, la qualité d'appel, l'é
 
 ## 3. Typographie
 
-La famille typographique unique est **Geist** (accompagnée de **Geist Mono** pour les identifiants techniques, logs et métriques dans l'espace administration).
+La famille typographique unique est **Geist** (accompagnée de **Geist Mono** pour les identifiants techniques).
 
 | Style | Famille | Taille | Hauteur de ligne | Graisse | Usage |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `Display / H1` | Geist | `22px` (`1.375rem`) | `28px` | `600` (SemiBold) | Titres de vues principales, en-tête Administration |
+| `Display / H1` | Geist | `22px` (`1.375rem`) | `28px` | `600` (SemiBold) | Titres de vues principales |
 | `Heading / H2` | Geist | `16px` (`1rem`) | `24px` | `600` (SemiBold) | Nom de la conversation active, titres de modales |
 | `Section Label` | Geist | `11px` (`0.6875rem`) | `16px` | `600` (SemiBold) | Catégories sidebar (`PRIVÉES`, `GROUPES`), uppercase, tracking `+0.06em` |
 | `Body / Message` | Geist | `14.5px` (`0.906rem`) | `22px` | `400` (Regular) | Corps des messages et contenus courants |
 | `UI / Control` | Geist | `13.5px` (`0.844rem`) | `20px` | `500` (Medium) | Boutons, éléments de liste, onglets |
 | `Caption / Meta` | Geist | `12px` (`0.75rem`) | `16px` | `400` (Regular) | Horodatages, rôles, indications de statut |
-| `Code / Log` | Geist Mono | `12px` (`0.75rem`) | `18px` | `400` (Regular) | `requestId`, logs `pino`, identifiants de session |
+| `Code / Log` | Geist Mono | `12px` (`0.75rem`) | `18px` | `400` (Regular) | `requestId`, identifiants de session |
 
 ---
 
@@ -134,11 +134,6 @@ La famille typographique unique est **Geist** (accompagnée de **Geist Mono** po
   3. **Partage d'écran** (Démarrer / Arrêter)
   4. **Raccrocher** (Bouton rouge `#DC2626` mettant fin à l'appel et restaurant la conversation)
 
-### 5.5 Espace Administration (Développeurs)
-* Accessible uniquement aux comptes disposant du rôle développeur/administrateur, présenté comme un **environnement séparé** (`ChatISEN Admin`).
-* **Périmètre intégré à ChatISEN** :
-  * Gestion des utilisateurs (consultation, suspension, suppression) et des rôles administrateurs.
-  * Vue globale des conversations (métadonnées et volumétrie) et statistiques synthétiques.
-  * État de santé des briques d'architecture (`API Fastify`, `PostgreSQL`, `Redis`, `coturn`).
-  * Consultation rapide des logs structurés (`pino`) et résumé des alertes.
-* **Délégation vers Grafana** : Des boutons d'accès direct (`Ouvrir dans Grafana ↗`) renvoient vers les tableaux de bord Prometheus/Loki pour l'observabilité approfondie, évitant toute duplication d'outils spécialisés.
+### 5.5 Espace Administration — Hors périmètre actuel
+* L'observabilité passe par **Grafana**, servi derrière Caddy sur `/grafana` avec un accès protégé (voir `docs/architecture.md` § 8.1 et § 10.1). L'application ne contient pas d'espace d'administration.
+* Un espace d'administration dans l'application relève du contrôle d'accès avancé (extension, risque R5) et exposerait conversations et logs (NFR-04). Avant de le réintégrer : un ADR, des exigences SEC-xx et une issue dédiée.
