@@ -17,6 +17,7 @@ Le projet est noté sur le **DevOps** : infrastructure, CI/CD, exploitation. Ces
 | **Dev Messagerie** | Auth, utilisateurs, conversations, messages temps réel, historique, reprise de connexion — back **et** front | Theo (@theocb13) |
 | **Dev Appels** | Signalisation WebRTC, écrans d'appel, micro/caméra, partage d'écran, qualité d'appel, coturn — back **et** front | Mathys (@MathysGbs) |
 | **Flex** | Chef de projet, releases, sécurité du pipeline, plan d'urgence, joker | Tom (@tomriquier2004-dev), chef de projet |
+| **Binôme secours CI / Déploiement** | Reprise sur incident CI, relance des pipelines et déploiement de secours en l'absence d'Infra | Tom (@tomriquier2004-dev) en binôme formel, puis Theo (@theocb13) en renfort |
 
 ## Périmètres
 
@@ -26,6 +27,8 @@ Le projet est noté sur le **DevOps** : infrastructure, CI/CD, exploitation. Ces
 - Stack Prometheus / Grafana / Loki, règles d'alerte de la plateforme.
 - Tests de charge (k6), mesure des ressources et optimisation.
 - Rôle de coach : il aide les autres à écrire *leurs* jobs, dashboards et alertes plutôt que de tout faire à leur place.
+- - Rôle de coach : il aide les autres à écrire *leurs* jobs, dashboards et alertes plutôt que de tout faire à leur place.
+- **Binôme de secours CI/déploiement** : Tom (@tomriquier2004-dev) est désigné binôme formel pour débloquer la CI et exécuter un déploiement en l'absence d'Infra (avec Theo (@theocb13) en relais secondaire), afin d'éliminer tout point unique de défaillance dès le début du projet.
 
 ### Dev Messagerie — tranche « messagerie », de bout en bout
 - **Code** : API REST (auth, users, conversations), modèle de données, Socket.IO (rooms, présence, accusés), historique, reprise de connexion, UI correspondante.
