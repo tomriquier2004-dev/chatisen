@@ -12,6 +12,7 @@ import cookie from "@fastify/cookie";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { AppError } from "./errors";
+import { noopSessionEvents, type SessionEvents } from "./modules/auth/events";
 import { authRoutes } from "./modules/auth/routes";
 import { noopMembershipEvents, type MembershipEvents } from "./modules/conversations/events";
 import { conversationRoutes } from "./modules/conversations/routes";
@@ -24,6 +25,8 @@ export interface AppDeps {
   db: Db;
   /** Changements d'appartenance, branchés sur le temps réel quand il existe (architecture § 5.3). */
   membershipEvents?: MembershipEvents;
+  /** Révocations de sessions, pour la déconnexion forcée des sockets (architecture § 5.3). */
+  sessionEvents?: SessionEvents;
 }
 
 declare module "fastify" {
@@ -106,6 +109,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
         tokens,
         refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
         secureCookies: config.NODE_ENV === "production",
+        sessionEvents: deps.sessionEvents ?? noopSessionEvents,
       });
       await api.register(userRoutes, { authenticate });
       await api.register(messageRoutes, { authenticate });
