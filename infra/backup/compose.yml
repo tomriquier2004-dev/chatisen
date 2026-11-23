@@ -1,0 +1,56 @@
+# Sauvegarde PostgreSQL (issue #9). Fichier autonome tant que infra/compose/docker-compose.yml
+# n'existe pas : le service postgres-backup et le volume pg-backups y seront repris tels quels.
+# Le profil restore-test ajoute une base cible jetable pour le test de restauration.
+name: chatisen-backup
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatisen}
+      POSTGRES_USER: ${POSTGRES_USER:-chatisen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (voir .env.example)}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-backup:
+    build: .
+    image: chatisen/postgres-backup:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-chatisen}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (voir .env.example)}
+      PGDATABASE: ${POSTGRES_DB:-chatisen}
+      # Clé PUBLIQUE age (age1…), pas un secret. backup.sh refuse de tourner si elle est vide.
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      # Volume distinct de pg-data : perdre le volume de la base ne fait pas perdre les sauvegardes.
+      - pg-backups:/backups
+    restart: unless-stopped
+
+  postgres-restore:
+    image: postgres:16-bookworm
+    profiles: [restore-test]
+    environment:
+      POSTGRES_DB: chatisen_restore
+      POSTGRES_USER: ${POSTGRES_USER:-chatisen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis (voir .env.example)}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg-data:
+  pg-backups:
