@@ -15,6 +15,7 @@ import { AppError } from "./errors";
 import { authRoutes } from "./modules/auth/routes";
 import { noopMembershipEvents, type MembershipEvents } from "./modules/conversations/events";
 import { conversationRoutes } from "./modules/conversations/routes";
+import { messageRoutes } from "./modules/messages/routes";
 import { TokenService } from "./modules/auth/tokens";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
@@ -29,6 +30,8 @@ declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     tokens: TokenService;
+    /** État de Redis pour /health/ready ; remplacé par attachRealtime quand l'adapter Redis est actif. */
+    redisStatus: () => Promise<"up" | "down" | undefined>;
   }
 }
 
@@ -49,6 +52,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
 
   app.decorate("db", deps.db);
   app.decorate("tokens", tokens);
+  app.decorate("redisStatus", async (): Promise<"up" | "down" | undefined> => undefined);
   app.addSchema(ErrorResponse);
   app.register(cookie);
 
@@ -91,9 +95,10 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
             request.log.warn({ err }, "postgres unreachable");
             postgres = "down";
           }
-          const ready = postgres === "up";
+          const redis = await app.redisStatus();
+          const ready = postgres === "up" && redis !== "down";
           reply.code(ready ? 200 : 503);
-          return { status: ready ? "ready" : "not_ready", checks: { postgres } };
+          return { status: ready ? "ready" : "not_ready", checks: redis ? { postgres, redis } : { postgres } };
         },
       );
 
@@ -103,6 +108,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
         secureCookies: config.NODE_ENV === "production",
       });
       await api.register(userRoutes, { authenticate });
+      await api.register(messageRoutes, { authenticate });
       await api.register(conversationRoutes, {
         authenticate,
         events: deps.membershipEvents ?? noopMembershipEvents,

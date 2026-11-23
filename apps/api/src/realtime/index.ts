@@ -1,0 +1,153 @@
+import { randomUUID } from "node:crypto";
+import type { FastifyInstance } from "fastify";
+import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
+import type { TSchema } from "@sinclair/typebox";
+import {
+  ConversationSyncPayload,
+  MessageSendPayload,
+  type Ack,
+  type ClientToServerEvents,
+  type ErrorCode,
+  type ServerToClientEvents,
+} from "@chatisen/shared";
+import { AppError } from "../errors";
+import { requireMember } from "../modules/conversations/service";
+import { messagesAfter, storeMessage } from "../modules/messages/service";
+
+export interface SocketData {
+  userId: string;
+  sessionId: string;
+}
+
+export type IoServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
+
+export const userRoom = (userId: string) => `user:${userId}`;
+export const conversationRoom = (conversationId: string) => `conv:${conversationId}`;
+
+export interface Realtime {
+  io: IoServer;
+  /** Redis joignable ? undefined quand l'API tourne sans adapter Redis (instance unique). */
+  redisStatus(): Promise<"up" | "down" | undefined>;
+}
+
+/**
+ * Socket.IO sur le serveur HTTP de Fastify (architecture § 2 et § 5.2).
+ * - JWT vérifié au handshake ; déconnexion programmée à son expiration (§ 6.1) ;
+ * - rooms `user:<id>` et `conv:<id>` jointes par le serveur d'après la base, jamais choisies par le client (FR-03) ;
+ * - avec `redisUrl`, l'adapter Redis diffuse entre les instances d'API (NFR-02).
+ */
+export async function attachRealtime(app: FastifyInstance, opts: { redisUrl?: string }): Promise<Realtime> {
+  const io: IoServer = new Server(app.server, {
+    path: "/socket.io",
+    // Même origine que le client (Caddy en déploiement, proxy Vite en dev) : pas de CORS.
+    cors: undefined,
+    serveClient: false,
+  });
+
+  let pub: ReturnType<typeof createClient> | undefined;
+  let sub: ReturnType<typeof createClient> | undefined;
+  if (opts.redisUrl) {
+    pub = createClient({ url: opts.redisUrl });
+    sub = pub.duplicate();
+    for (const client of [pub, sub]) client.on("error", (err) => app.log.warn({ err }, "redis error"));
+    await Promise.all([pub.connect(), sub.connect()]);
+    io.adapter(createAdapter(pub, sub));
+  }
+
+  io.use(async (socket, next) => {
+    try {
+      const token: unknown = socket.handshake.auth?.token;
+      if (typeof token !== "string") throw new AppError(401, "UNAUTHENTICATED", "Token absent");
+      const claims = await app.tokens.verifyAccessToken(token);
+      socket.data.userId = claims.userId;
+      socket.data.sessionId = claims.sessionId;
+
+      const memberships = await app.db
+        .selectFrom("conversation_members")
+        .select("conversation_id")
+        .where("user_id", "=", claims.userId)
+        .execute();
+      await socket.join([userRoom(claims.userId), ...memberships.map((m) => conversationRoom(m.conversation_id))]);
+
+      // À l'expiration du JWT, le client rafraîchit son token puis se reconnecte (architecture § 6.1).
+      const ttl = claims.exp * 1000 - Date.now();
+      const timer = setTimeout(() => socket.disconnect(true), Math.max(ttl, 0));
+      socket.once("disconnect", () => clearTimeout(timer));
+      next();
+    } catch (err) {
+      const code = err instanceof AppError ? err.code : "INTERNAL_ERROR";
+      if (!(err instanceof AppError)) app.log.error({ err }, "socket handshake failed");
+      next(Object.assign(new Error(code), { data: { code } }));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    const log = app.log.child({ socketId: socket.id, userId: socket.data.userId });
+
+    socket.on(
+      "message:send",
+      handler(log, MessageSendPayload, async (payload: MessageSendPayload) => {
+        // Autorisation à chaque événement, pas seulement au handshake (§ 5.3).
+        await requireMember(app.db, payload.conversationId, socket.data.userId);
+        const { message, created } = await storeMessage(app.db, socket.data.userId, payload);
+        if (created) io.to(conversationRoom(message.conversationId)).emit("message:new", message);
+        return message;
+      }),
+    );
+
+    socket.on(
+      "conversation:sync",
+      handler(log, ConversationSyncPayload, async (payload: ConversationSyncPayload) => {
+        await requireMember(app.db, payload.conversationId, socket.data.userId);
+        return messagesAfter(app.db, payload.conversationId, payload.afterSeq);
+      }),
+    );
+  });
+
+  app.addHook("onClose", async () => {
+    await io.close();
+    await Promise.all([pub?.quit(), sub?.quit()]);
+  });
+
+  const redisStatus = async (): Promise<"up" | "down" | undefined> => {
+    if (!pub) return undefined;
+    try {
+      await pub.ping();
+      return "up";
+    } catch {
+      return "down";
+    }
+  };
+  app.redisStatus = redisStatus;
+  return { io, redisStatus };
+}
+
+type Logger = FastifyInstance["log"];
+
+/**
+ * Enveloppe commune des événements client → serveur : validation du payload par schéma,
+ * réponse dans l'ack au format unique, jamais de détail interne en cas d'erreur.
+ */
+function handler<S extends TSchema, P, R>(log: Logger, schema: S, run: (payload: P) => Promise<R>) {
+  const check = TypeCompiler.Compile(schema);
+  return async (payload: unknown, ack?: (res: Ack<R>) => void) => {
+    const requestId = randomUUID();
+    const fail = (code: ErrorCode, message: string) => ack?.({ ok: false, error: { code, message, requestId } });
+    if (typeof ack !== "function") return;
+    if (!check.Check(payload)) {
+      const first = check.Errors(payload).First();
+      fail("VALIDATION_FAILED", first ? `${first.path || "payload"}: ${first.message}` : "Payload invalide");
+      return;
+    }
+    try {
+      ack({ ok: true, data: await run(payload as P) });
+    } catch (err) {
+      if (err instanceof AppError) return void fail(err.code, err.message);
+      log.error({ err, requestId }, "socket handler failed");
+      fail("INTERNAL_ERROR", "Erreur interne du serveur");
+    }
+  };
+}
