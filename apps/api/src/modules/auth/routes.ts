@@ -10,6 +10,7 @@ import {
 import { AppError, unauthenticated } from "../../errors";
 import type { User } from "../../db/schema";
 import { dummyPasswordHash, hashPassword, verifyPassword } from "./passwords";
+import { RATE_RULES, rateLimit, type RateLimiter } from "../../plugins/rate-limit";
 import type { SessionEvents } from "./events";
 import { hashRefreshToken, newRefreshToken, type TokenService } from "./tokens";
 
@@ -20,6 +21,7 @@ export interface AuthRoutesOptions {
   secureCookies: boolean;
   /** Prévenu après chaque révocation, pour fermer les sockets de ces sessions. */
   sessionEvents: SessionEvents;
+  limits: { limiter: RateLimiter; enabled: boolean };
 }
 
 const PG_UNIQUE_VIOLATION = "23505";
@@ -36,6 +38,11 @@ export function toMe(user: Pick<User, "id" | "username" | "display_name" | "emai
 
 export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions): Promise<void> {
   const { tokens, refreshTtlDays, secureCookies, sessionEvents } = opts;
+  const { limiter, enabled } = opts.limits;
+  // Appliqué avant le hachage Argon2id : une requête refusée ne coûte presque rien au serveur.
+  const limitRegister = rateLimit(limiter, enabled, RATE_RULES.registerPerIp);
+  const limitLogin = rateLimit(limiter, enabled, RATE_RULES.loginPerIp, RATE_RULES.loginPerAccount);
+  const limitRefresh = rateLimit(limiter, enabled, RATE_RULES.refreshPerIp);
   const db = app.db;
   const refreshTtlMs = refreshTtlDays * 24 * 3600 * 1000;
 
@@ -76,7 +83,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
 
   app.post(
     "/auth/register",
-    { schema: { body: RegisterRequest, response: { 201: AuthResponse } } },
+    { preHandler: limitRegister, schema: { body: RegisterRequest, response: { 201: AuthResponse } } },
     async (request, reply) => {
       const body = request.body as RegisterRequest;
       const passwordHash = await hashPassword(body.password);
@@ -107,7 +114,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
 
   app.post(
     "/auth/login",
-    { schema: { body: LoginRequest, response: { 200: AuthResponse } } },
+    { preHandler: limitLogin, schema: { body: LoginRequest, response: { 200: AuthResponse } } },
     async (request, reply) => {
       const body = request.body as LoginRequest;
       const user = await db.selectFrom("users").selectAll().where("username", "=", body.username).executeTakeFirst();
@@ -122,7 +129,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
    * Rotation : chaque refresh token ne sert qu'une fois. Présenter un token déjà utilisé
    * révoque toute la famille de sessions (signe de vol, architecture § 6.1).
    */
-  app.post("/auth/refresh", { schema: { response: { 200: AuthResponse } } }, async (request, reply) => {
+  app.post("/auth/refresh", { preHandler: limitRefresh, schema: { response: { 200: AuthResponse } } }, async (request, reply) => {
     const presented = request.cookies[REFRESH_COOKIE.name];
     if (!presented) throw unauthenticated("Session absente");
 

@@ -96,6 +96,9 @@ importers:
       preact:
         specifier: ^11.2.0
         version: 11.2.0
+      socket.io-client:
+        specifier: ^4.8.4
+        version: 4.8.4
     devDependencies:
       '@preact/preset-vite':
         specifier: ^2.10.6

@@ -20,7 +20,7 @@ const sockets: ClientSocket[] = [];
 
 beforeAll(async () => {
   testDb = await createTestDb();
-  config = loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent", JWT_SECRET: randomBytes(48).toString("base64") });
+  config = loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent", RATE_LIMIT_ENABLED: "false", JWT_SECRET: randomBytes(48).toString("base64") });
   a = await startInstance(config, { db: testDb.db });
   b = await startInstance(config, { db: testDb.db });
 });
