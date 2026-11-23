@@ -19,6 +19,10 @@
   font: var(--text-heading);
 }
 
+.headerAction {
+  margin-left: auto;
+}
+
 .subtitle {
   font: var(--text-caption);
   color: var(--color-text-secondary);
