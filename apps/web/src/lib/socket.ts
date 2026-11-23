@@ -30,6 +30,7 @@ export class Realtime {
   private readonly lastSeq = new Map<string, number>();
   private readonly messageListeners = new Set<(m: Message) => void>();
   private readonly stateListeners = new Set<(s: ConnectionState) => void>();
+  private readonly resumeListeners = new Set<() => void>();
   private state: ConnectionState = "disconnected";
   private everConnected = false;
   private readonly ackTimeoutMs: number;
@@ -53,7 +54,11 @@ export class Realtime {
       const resumed = this.everConnected;
       this.everConnected = true;
       this.setState("connected");
-      if (resumed) void this.catchUp();
+      if (resumed) {
+        void this.catchUp();
+        // Les événements reçus pendant la coupure sont perdus : les abonnés rechargent leur état (#98).
+        for (const l of this.resumeListeners) l();
+      }
     });
     this.socket.on("disconnect", (reason) => {
       // Fermeture voulue par le serveur (logout, session révoquée) : pas de reconnexion automatique.
@@ -90,6 +95,12 @@ export class Realtime {
     this.stateListeners.add(listener);
     listener(this.state);
     return () => this.stateListeners.delete(listener);
+  }
+
+  /** Appelé à chaque reconnexion (pas à la première connexion). */
+  onResume(listener: () => void): () => void {
+    this.resumeListeners.add(listener);
+    return () => this.resumeListeners.delete(listener);
   }
 
   /** Suit une conversation (ouverte à l'écran) à partir du dernier seq connu. */

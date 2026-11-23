@@ -103,3 +103,35 @@ test("un membre retiré cesse de recevoir les messages, sans recharger la page",
   await pageB.waitForTimeout(1000);
   await expect(pageB.getByText("message après le retrait")).toHaveCount(0);
 });
+
+test("après une coupure, la liste des conversations est rechargée (nouvelle conversation, aperçu, non-lus)", async ({
+  browser,
+}) => {
+  const [pageA, pageB] = await Promise.all([openBrowser(browser), openBrowser(browser)]);
+  const alice = newUser("alice");
+  const bob = newUser("bob");
+  const group = `Groupe ${bob.username}`;
+  const network = await cuttableRealtime(pageB);
+  await register(pageA, alice);
+  await register(pageB, bob);
+  await createGroup(pageA, group, [bob]);
+  await expect(conversationButton(pageB, group)).toBeVisible();
+
+  // Bob n'a aucune conversation ouverte : tout ce qui suit n'arrive que par la liste.
+  await network.cut();
+  await expect(pageB.getByRole("status").filter({ hasText: /Connexion perdue|Hors ligne/ })).toBeVisible();
+
+  // Pendant la coupure : un message dans le groupe, et une nouvelle conversation privée avec Bob.
+  await openConversation(pageA, group);
+  await sendMessage(pageA, "message pendant la coupure");
+  await expect(pageA.locator("ol li p", { hasText: "message pendant la coupure" })).toBeVisible();
+  await createPrivate(pageA, bob);
+  await expect(conversationButton(pageB, alice.displayName)).toHaveCount(0);
+
+  network.restore();
+  // Sans recharger la page : la conversation privée apparaît, l'aperçu et le non-lu du groupe sont à jour.
+  await expect(conversationButton(pageB, alice.displayName)).toBeVisible({ timeout: 20_000 });
+  const groupEntry = conversationButton(pageB, group);
+  await expect(groupEntry).toContainText("message pendant la coupure");
+  await expect(groupEntry.getByLabel("1 non lus")).toBeVisible();
+});
