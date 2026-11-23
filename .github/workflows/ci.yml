@@ -16,7 +16,7 @@ concurrency:
 jobs:
   pr-hygiene:
     name: PR hygiene
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Titre au format Conventional Commits
@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Semgrep scan
-        run: semgrep scan --config auto --error --metrics=off
+        run: semgrep scan --config p/default --error --metrics=off
 
   # À ajouter au fil des phases (voir issues du milestone « 3 - Application ») :
   #   lint -> tests (Vitest) -> build image Docker -> Trivy -> push registry -> deploy
