@@ -7,6 +7,7 @@ import { TypeCompiler } from "@sinclair/typebox/compiler";
 import type { TSchema } from "@sinclair/typebox";
 import {
   ConversationSyncPayload,
+  MessageReadPayload,
   MessageSendPayload,
   type Ack,
   type ClientToServerEvents,
@@ -15,7 +16,7 @@ import {
 } from "@chatisen/shared";
 import { AppError } from "../errors";
 import { requireMember } from "../modules/conversations/service";
-import { messagesAfter, storeMessage } from "../modules/messages/service";
+import { markRead, messagesAfter, storeMessage } from "../modules/messages/service";
 import { conversationRoom, sessionRoom, userRoom, type RealtimeEvents } from "./events";
 
 export { conversationRoom, sessionRoom, userRoom } from "./events";
@@ -113,6 +114,15 @@ export async function attachRealtime(
       handler(log, ConversationSyncPayload, async (payload: ConversationSyncPayload) => {
         await requireMember(app.db, payload.conversationId, socket.data.userId);
         return messagesAfter(app.db, payload.conversationId, payload.afterSeq);
+      }),
+    );
+
+    // Accusé de lecture : last_read_seq ne recule jamais et ne dépasse pas le dernier message.
+    socket.on(
+      "message:read",
+      handler(log, MessageReadPayload, async (payload: MessageReadPayload) => {
+        await requireMember(app.db, payload.conversationId, socket.data.userId);
+        return markRead(app.db, payload.conversationId, socket.data.userId, payload.seq);
       }),
     );
   });
