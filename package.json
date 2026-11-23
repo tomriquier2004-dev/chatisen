@@ -3,9 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "description": "ChatISEN - plateforme de communication temps réel (projet académique DevOps 2026-2027, ISEN)",
+  "type": "module",
   "packageManager": "pnpm@10.34.9",
   "engines": {
     "node": ">=22"
   },
-  "scripts": {}
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2"
+  }
 }

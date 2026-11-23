@@ -9,6 +9,20 @@
 4. Revue croisée : **1 approbation venant d'un autre domaine**.
 5. CI verte requise avant merge. Merge en *squash*.
 
+## Vérifications locales
+
+Prérequis : Node ≥ 22 et pnpm (version fixée par `packageManager` dans `package.json` ; `corepack enable`, ou `npx pnpm@<version>` si corepack n'est pas disponible).
+
+```bash
+pnpm install      # dépendances de tout le monorepo
+pnpm lint         # ESLint sur tout le dépôt
+pnpm typecheck    # tsc --noEmit dans chaque paquet
+pnpm test         # Vitest dans chaque paquet
+pnpm build        # build de chaque paquet qui en a un
+```
+
+Ce sont les mêmes commandes que le job CI « Lint, typecheck, tests ».
+
 ## Commits et titres de PR — Conventional Commits
 
 ```
