@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.1.0...v0.2.0) (2026-11-23)
+
+
+### Fonctionnalités
+
+* **api:** add minimal Fastify server with liveness probe ([#49](https://github.com/tomriquier2004-dev/chatisen/issues/49)) ([c7d2fc9](https://github.com/tomriquier2004-dev/chatisen/commit/c7d2fc9ed8a2dce6a36ca78c74494f5595ebff64))
+* **shared:** add shared contracts package with error format and health schema ([#48](https://github.com/tomriquier2004-dev/chatisen/issues/48)) ([1147795](https://github.com/tomriquier2004-dev/chatisen/commit/1147795a40640a0c0ffa283da445437212a0b033))
+* **web:** add Preact + Vite client with design system tokens ([#52](https://github.com/tomriquier2004-dev/chatisen/issues/52)) ([55e7f15](https://github.com/tomriquier2004-dev/chatisen/commit/55e7f154ae1c9d78abbcdc12c3bb982f46025845))
+
 ## 0.1.0 (2026-11-23)
 
 
