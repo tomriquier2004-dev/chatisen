@@ -1,6 +1,7 @@
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
 import { createDb, migrateToLatest } from "./db";
+import { attachRealtime } from "./realtime";
 
 const config = loadConfig();
 const db = createDb(config.DATABASE_URL, config.DATABASE_POOL_SIZE);
@@ -27,6 +28,8 @@ try {
   // Migrations au démarrage, sous le verrou de Kysely : plusieurs instances peuvent démarrer ensemble.
   const { results } = await migrateToLatest(db);
   for (const r of results ?? []) app.log.info({ migration: r.migrationName, status: r.status }, "migration");
+  await attachRealtime(app, { redisUrl: config.REDIS_URL });
+  if (!config.REDIS_URL) app.log.warn("REDIS_URL absent : Socket.IO sans adapter Redis (une seule instance possible)");
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
 } catch (err) {
   app.log.fatal({ err }, "failed to start");

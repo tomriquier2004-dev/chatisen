@@ -15,6 +15,7 @@ describe("loadConfig", () => {
       LOG_LEVEL: "info",
       DATABASE_URL: "postgres://chatisen:chatisen-dev@127.0.0.1:5432/chatisen",
       DATABASE_POOL_SIZE: 10,
+      REDIS_URL: "redis://127.0.0.1:6379",
     });
   });
 

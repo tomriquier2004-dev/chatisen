@@ -18,6 +18,11 @@ const ConfigSchema = Type.Object({
   ),
   DATABASE_URL: Type.String({ pattern: "^postgres(ql)?://" }),
   DATABASE_POOL_SIZE: Type.Integer({ minimum: 1, maximum: 100, default: 10 }),
+  /**
+   * Redis pour l'adapter Socket.IO (diffusion entre instances). Absent : instance unique, sans adapter.
+   * Obligatoire dès que plusieurs instances d'API tournent.
+   */
+  REDIS_URL: Type.Optional(Type.String({ pattern: "^rediss?://" })),
   /** Clé HMAC des access tokens (HS256). 32 caractères minimum ; à générer avec `openssl rand -base64 48`. */
   JWT_SECRET: Type.String({ minLength: 32 }),
   ACCESS_TOKEN_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 900 }),
@@ -39,6 +44,7 @@ export class ConfigError extends Error {
 const DEV_DEFAULTS: Record<string, string> = {
   DATABASE_URL: "postgres://chatisen:chatisen-dev@127.0.0.1:5432/chatisen",
   JWT_SECRET: randomBytes(48).toString("base64"),
+  REDIS_URL: "redis://127.0.0.1:6379",
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {

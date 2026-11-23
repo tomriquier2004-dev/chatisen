@@ -17,12 +17,16 @@ export const DependencyStatus = Type.Union([Type.Literal("up"), Type.Literal("do
 
 /**
  * GET /api/v1/health/ready : l'instance peut servir du trafic (dépendances joignables).
- * 200 si tout est « up », 503 sinon (NFR-03). Redis s'ajoutera avec Socket.IO.
+ * 200 si tout est « up », 503 sinon (NFR-03). Redis est absent du rapport quand l'API tourne sans
+ * adapter Redis (instance unique).
  */
 export const HealthReadyResponse = Type.Object(
   {
     status: Type.Union([Type.Literal("ready"), Type.Literal("not_ready")]),
-    checks: Type.Object({ postgres: DependencyStatus }, { additionalProperties: false }),
+    checks: Type.Object(
+      { postgres: DependencyStatus, redis: Type.Optional(DependencyStatus) },
+      { additionalProperties: false },
+    ),
   },
   { additionalProperties: false, $id: "HealthReadyResponse" },
 );
