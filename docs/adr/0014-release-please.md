@@ -32,7 +32,9 @@ Configuration : `release-please-config.json` (type `node`, première version `0.
 ## Conséquences
 
 - **Le titre de PR fait le changelog.** Merge en squash obligatoire (déjà la règle), et un titre mal typé produit une version fausse. Un `feat` qui n'en est pas un déclenche une version mineure.
-- **Réglage du dépôt requis** : *Settings → Actions → General → Workflow permissions* doit autoriser « Allow GitHub Actions to create and approve pull requests », sinon l'action ne peut pas ouvrir la Release PR.
-- **Limite assumée : la CI ne tourne pas sur la Release PR.** Une PR ouverte avec le `GITHUB_TOKEN` ne déclenche pas d'autres workflows. Si la protection de `main` exige des checks, il faudra soit un token dédié (GitHub App ou PAT fine-grained, dans les secrets), soit fermer puis rouvrir la PR à la main. Le job « PR hygiene » ignore de toute façon les branches `release-please--*`, dont le titre et le corps sont générés.
+- **Le réglage « Allow GitHub Actions to create and approve pull requests » n'est pas activé** : il permettrait à un workflow d'approuver une PR avec le `GITHUB_TOKEN`, ce qui peut contourner la règle « 1 approbation d'un autre domaine ». Il reste désactivé.
+- **Jeton dédié** : l'action utilise le secret `RELEASE_PLEASE_TOKEN` (PAT fine-grained, limité à ce dépôt, Contents et Pull requests en écriture, expiration courte). Une PR ouverte avec ce jeton déclenche la CI : les checks requis par la protection de `main` reportent, la Release PR est mergeable. Sans ce jeton, le workflow échoue (constaté après le merge de la PR #23).
+- **Limites assumées du jeton** : il est lié à un compte (les Release PR sont ouvertes au nom de son propriétaire, qui ne peut donc pas les approuver lui-même) ; il expire et doit être renouvelé ; tout membre pouvant exécuter un workflow sur une branche du dépôt peut lire le secret, d'où le périmètre minimal et l'expiration courte.
+- Le job « PR hygiene » n'ignore que les PR dont la branche commence par `release-please--` **et** dont le titre commence par `chore(main): release `, dont le corps est généré.
 - Les images restent taguées par SHA ; le tag de version s'y ajoute au moment du build quand la chaîne de déploiement existera (issue #12).
 - À revoir si un paquet est un jour publié séparément (passer à une version par paquet dans la config).
