@@ -1,0 +1,35 @@
+# Services de données pour le développement local et les tests d'intégration (issue #53).
+# Ce n'est pas la topologie de déploiement (architecture § 8.1, issue #12) : ports liés à
+# 127.0.0.1 uniquement, mot de passe de développement sans valeur, aucune persistance exigée.
+# Usage : pnpm db:up / pnpm db:down (voir README « Lancer en local »).
+name: chatisen-dev
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: chatisen
+      POSTGRES_USER: chatisen
+      POSTGRES_PASSWORD: ${POSTGRES_DEV_PASSWORD:-chatisen-dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatisen -d chatisen"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-bookworm
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pg-dev-data:

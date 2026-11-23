@@ -1,26 +1,35 @@
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
+import { createDb, migrateToLatest } from "./db";
 
 const config = loadConfig();
-const app = buildApp(config);
+const db = createDb(config.DATABASE_URL, config.DATABASE_POOL_SIZE);
+const app = buildApp(config, { db });
 
 // Arrêt propre : Docker et le terminal envoient SIGTERM / SIGINT, on termine les requêtes en cours.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, "shutting down");
-    app.close().then(
-      () => process.exit(0),
-      (err: unknown) => {
-        app.log.error({ err }, "error during shutdown");
-        process.exit(1);
-      },
-    );
+    app
+      .close()
+      .then(() => db.destroy())
+      .then(
+        () => process.exit(0),
+        (err: unknown) => {
+          app.log.error({ err }, "error during shutdown");
+          process.exit(1);
+        },
+      );
   });
 }
 
 try {
+  // Migrations au démarrage, sous le verrou de Kysely : plusieurs instances peuvent démarrer ensemble.
+  const { results } = await migrateToLatest(db);
+  for (const r of results ?? []) app.log.info({ migration: r.migrationName, status: r.status }, "migration");
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
 } catch (err) {
   app.log.fatal({ err }, "failed to start");
+  await db.destroy().catch(() => undefined);
   process.exit(1);
 }

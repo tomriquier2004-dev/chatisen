@@ -38,16 +38,17 @@ docs/             Spécification, ADR, rapport, rapports de mesure
 
 ## Lancer en local
 
-Prérequis : Node ≥ 22 et pnpm (version fixée par `packageManager` dans `package.json` : `corepack enable`, ou préfixer les commandes par `npx pnpm@10.34.9` si corepack n'est pas disponible).
+Prérequis : Node ≥ 22, pnpm (version fixée par `packageManager` dans `package.json` : `corepack enable`, ou préfixer les commandes par `npx pnpm@10.34.9` si corepack n'est pas disponible) et Docker (Docker Desktop sous Windows / macOS).
 
 ```bash
 pnpm install
+pnpm db:up     # PostgreSQL 16 et Redis 7 en conteneurs (infra/compose/compose.dev.yml), ports liés à 127.0.0.1
 pnpm dev
 ```
 
-`pnpm dev` démarre ensemble l'API (http://127.0.0.1:3000, rechargée à chaque modification) et le client (http://127.0.0.1:5173). Ouvrir **http://127.0.0.1:5173** : le client relaie `/api` vers l'API, et la page d'accueil affiche « API : opérationnelle » quand les deux tournent. `Ctrl+C` arrête les deux.
+`pnpm dev` démarre ensemble l'API (http://127.0.0.1:3000, rechargée à chaque modification, migrations appliquées au démarrage) et le client (http://127.0.0.1:5173). Ouvrir **http://127.0.0.1:5173** : le client relaie `/api` vers l'API, et la page d'accueil affiche « API : opérationnelle » quand les deux tournent. `Ctrl+C` arrête les deux ; `pnpm db:down` arrête les conteneurs (les données restent dans le volume `pg-dev-data`).
 
-Pas encore de base de données ni de Docker à ce stade. Vérifications : voir [`CONTRIBUTING.md`](CONTRIBUTING.md#vérifications-locales).
+Les tests de l'API utilisent la même base (une base jetable par fichier de test) : lancer `pnpm db:up` avant `pnpm test`. Vérifications : voir [`CONTRIBUTING.md`](CONTRIBUTING.md#vérifications-locales).
 
 La stack ci-dessus est une **hypothèse de travail** : aucun choix n'est acté tant qu'il n'a pas d'ADR dans `docs/adr/`.
 

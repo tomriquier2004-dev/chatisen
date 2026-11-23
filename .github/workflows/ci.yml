@@ -57,6 +57,29 @@ jobs:
     name: Lint, typecheck, tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Base et cache jetables pour les tests d'intégration de l'API (mot de passe de test, sans valeur).
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_DB: chatisen
+          POSTGRES_USER: chatisen
+          POSTGRES_PASSWORD: chatisen-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatisen -d chatisen"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7-bookworm
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://chatisen:chatisen-ci@127.0.0.1:5432/chatisen
+      TEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
