@@ -25,6 +25,13 @@ const ConfigSchema = Type.Object({
   REDIS_URL: Type.Optional(Type.String({ pattern: "^rediss?://" })),
   /** Clé HMAC des access tokens (HS256). 32 caractères minimum ; à générer avec `openssl rand -base64 48`. */
   JWT_SECRET: Type.String({ minLength: 32 }),
+  /** Limitation de débit sur l'authentification et la recherche (issue #71). Désactivable pour les tests. */
+  RATE_LIMIT_ENABLED: Type.Boolean({ default: true }),
+  /**
+   * Faire confiance à X-Forwarded-For (adresse réelle du client derrière Caddy). À activer seulement
+   * derrière le reverse proxy : sinon un client pourrait choisir l'adresse comptée par la limite.
+   */
+  TRUST_PROXY: Type.Boolean({ default: false }),
   ACCESS_TOKEN_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 900 }),
   REFRESH_TOKEN_TTL_DAYS: Type.Integer({ minimum: 1, maximum: 90, default: 30 }),
 });
