@@ -18,6 +18,7 @@ import { AppError } from "../errors";
 import { requireMember } from "../modules/conversations/service";
 import { markRead, messagesAfter, storeMessage } from "../modules/messages/service";
 import { conversationRoom, sessionRoom, userRoom, type RealtimeEvents } from "./events";
+import { MAX_CONNECTIONS_PER_USER, MESSAGE_SEND_RULE, type RateLimiter } from "../plugins/rate-limit";
 
 export { conversationRoom, sessionRoom, userRoom } from "./events";
 
@@ -43,7 +44,12 @@ export interface Realtime {
  */
 export async function attachRealtime(
   app: FastifyInstance,
-  opts: { redisUrl?: string; events?: RealtimeEvents },
+  opts: {
+    redisUrl?: string;
+    events?: RealtimeEvents;
+    /** Limites des événements (issue #88) ; absentes ou désactivées : aucune limite. */
+    rateLimit?: { limiter: RateLimiter; enabled: boolean };
+  },
 ): Promise<Realtime> {
   const io: IoServer = new Server(app.server, {
     path: "/socket.io",
@@ -52,6 +58,7 @@ export async function attachRealtime(
     serveClient: false,
   });
 
+  const limits = opts.rateLimit;
   let pub: ReturnType<typeof createClient> | undefined;
   let sub: ReturnType<typeof createClient> | undefined;
   if (opts.redisUrl) {
@@ -67,6 +74,14 @@ export async function attachRealtime(
       const token: unknown = socket.handshake.auth?.token;
       if (typeof token !== "string") throw new AppError(401, "UNAUTHENTICATED", "Token absent");
       const claims = await app.tokens.verifyAccessToken(token);
+
+      // Connexions simultanées bornées par utilisateur, toutes instances confondues (adapter Redis).
+      if (limits?.enabled) {
+        const existing = await io.in(userRoom(claims.userId)).fetchSockets();
+        if (existing.length >= MAX_CONNECTIONS_PER_USER) {
+          throw new AppError(429, "RATE_LIMITED", "Trop de connexions simultanées");
+        }
+      }
       socket.data.userId = claims.userId;
       socket.data.sessionId = claims.sessionId;
 
@@ -101,6 +116,15 @@ export async function attachRealtime(
     socket.on(
       "message:send",
       handler(log, MessageSendPayload, async (payload: MessageSendPayload) => {
+        // Limite par utilisateur, vérifiée avant toute écriture en base (issue #88).
+        if (limits?.enabled) {
+          const { allowed } = await limits.limiter.hit(
+            `${MESSAGE_SEND_RULE.name}:${socket.data.userId}`,
+            MESSAGE_SEND_RULE.limit,
+            MESSAGE_SEND_RULE.windowMs,
+          );
+          if (!allowed) throw new AppError(429, "RATE_LIMITED", "Trop de messages envoyés, patientez un instant");
+        }
         // Autorisation à chaque événement, pas seulement au handshake (§ 5.3).
         await requireMember(app.db, payload.conversationId, socket.data.userId);
         const { message, created } = await storeMessage(app.db, socket.data.userId, payload);
@@ -134,11 +158,19 @@ export async function attachRealtime(
 
   const redisStatus = async (): Promise<"up" | "down" | undefined> => {
     if (!pub) return undefined;
+    // Délai court : sans lui, un ping vers un Redis coupé attend la reconnexion et la sonde
+    // /health/ready ne répond plus (constaté en arrêtant Redis, issue #88).
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("redis ping timeout")), 1000);
+    });
     try {
-      await pub.ping();
+      await Promise.race([pub.ping(), timeout]);
       return "up";
     } catch {
       return "down";
+    } finally {
+      clearTimeout(timer);
     }
   };
   app.redisStatus = redisStatus;

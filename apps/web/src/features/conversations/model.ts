@@ -90,3 +90,18 @@ export function previewOf(conversation: ConversationView, meId: string): string 
   const short = text.length > 60 ? `${text.slice(0, 59)}…` : text;
   return m.senderId === meId ? `Vous : ${short}` : short;
 }
+
+/**
+ * Fusion après reconnexion (issue #98) : la liste du serveur fait foi. Renvoie aussi la
+ * conversation ouverte si elle a disparu (on n'en est plus membre).
+ */
+export function reconcile(
+  local: ConversationView[],
+  server: ConversationView[],
+  openId: string | null,
+): { list: ConversationView[]; lostSelected: ConversationView | null } {
+  const lost = openId && !server.some((c) => c.id === openId) ? (local.find((c) => c.id === openId) ?? null) : null;
+  // La conversation ouverte reste lue : son compteur ne doit pas réapparaître.
+  const list = server.map((c) => (c.id === openId ? { ...c, unreadCount: 0 } : c));
+  return { list: sortByActivity(list), lostSelected: lost };
+}

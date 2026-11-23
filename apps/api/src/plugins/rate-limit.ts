@@ -59,6 +59,34 @@ export class RedisRateLimiter implements RateLimiter {
   }
 }
 
+/**
+ * Redis indisponible (issue #88) : plutôt que de tout refuser (l'API deviendrait inutilisable) ou
+ * de tout laisser passer (plus aucune protection), on bascule sur des compteurs en mémoire, par
+ * instance. Les limites restent actives, mais ne sont plus partagées entre instances le temps de la panne.
+ */
+export class FallbackRateLimiter implements RateLimiter {
+  constructor(
+    private readonly primary: RateLimiter,
+    private readonly fallback: RateLimiter,
+    private readonly onError: (err: unknown) => void = () => undefined,
+  ) {}
+
+  async hit(key: string, limit: number, windowMs: number) {
+    try {
+      return await this.primary.hit(key, limit, windowMs);
+    } catch (err) {
+      this.onError(err);
+      return this.fallback.hit(key, limit, windowMs);
+    }
+  }
+}
+
+/** Connexions Socket.IO simultanées par utilisateur, toutes instances confondues (onglets, appareils). */
+export const MAX_CONNECTIONS_PER_USER = 10;
+
+/** Envois de messages par utilisateur (événement message:send), toutes sockets et instances confondues. */
+export const MESSAGE_SEND_RULE = { name: "message-send", limit: 20, windowMs: 10_000 } as const;
+
 /** Une règle : nom (préfixe de clé), limite, fenêtre, et ce qui identifie le demandeur. */
 export interface RateRule {
   name: string;

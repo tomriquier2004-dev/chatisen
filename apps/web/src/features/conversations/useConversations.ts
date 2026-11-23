@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { ConversationList, ConversationView } from "@chatisen/shared";
 import { api, realtime } from "../../app/services";
 import { ApiError } from "../../lib/errors";
-import { applyMessage, markRead, remove, sortByActivity, titleOf, upsert } from "./model";
+import { applyMessage, markRead, reconcile, remove, sortByActivity, titleOf, upsert } from "./model";
 
 export interface ConversationsState {
   conversations: ConversationView[];
@@ -53,6 +53,27 @@ export function useConversations(meId: string): ConversationsState {
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Chargement impossible."));
   }, []);
+
+  // Après une coupure, la liste est rechargée depuis le serveur (issue #98) : aperçus, non-lus,
+  // conversations créées ou quittées pendant la coupure. La conversation ouverte se ferme si
+  // l'on n'en est plus membre.
+  useEffect(
+    () =>
+      realtime.onResume(() => {
+        api
+          .request("GET", "/conversations", ConversationList)
+          .then((list) => {
+            const fresh = reconcile(listRef.current, list, selectedRef.current);
+            setConversations(fresh.list);
+            if (fresh.lostSelected) {
+              setSelectedId(null);
+              setNotice(`Vous avez été retiré de « ${titleOf(fresh.lostSelected, meId)} ».`);
+            }
+          })
+          .catch(() => undefined);
+      }),
+    [meId],
+  );
 
   useEffect(() => {
     const offMessage = realtime.onMessage((m) =>
