@@ -9,13 +9,13 @@ Le projet est noté sur le **DevOps** : infrastructure, CI/CD, exploitation. Ces
 - **Une astreinte tournante** pour que tout le monde touche l'exploitation.
 - **Pas de point unique de défaillance** : au moins deux personnes savent déployer et débloquer la CI.
 
-## Affectation (à compléter)
+## Affectation
 
 | Rôle | Domaine | Personne |
 | --- | --- | --- |
 | **Infra** | Lead plateforme : Compose/k3s, IaC, registry, secrets, stack d'observabilité, modèles de pipeline | Sha (@Shamina934), lead infra |
-| **Dev Messagerie** | Auth, utilisateurs, conversations, messages temps réel, historique, reprise de connexion — back **et** front | Mathys (@MathysGbs) ou Theo (@theocb13) — à répartir |
-| **Dev Appels** | Signalisation WebRTC, écrans d'appel, micro/caméra, partage d'écran, qualité d'appel, coturn — back **et** front | Mathys (@MathysGbs) ou Theo (@theocb13) — à répartir |
+| **Dev Messagerie** | Auth, utilisateurs, conversations, messages temps réel, historique, reprise de connexion — back **et** front | Theo (@theocb13) |
+| **Dev Appels** | Signalisation WebRTC, écrans d'appel, micro/caméra, partage d'écran, qualité d'appel, coturn — back **et** front | Mathys (@MathysGbs) |
 | **Flex** | Chef de projet, releases, sécurité du pipeline, plan d'urgence, joker | Tom (@tomriquier2004-dev), chef de projet |
 
 ## Périmètres
