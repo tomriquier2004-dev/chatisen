@@ -13,12 +13,16 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { AppError } from "./errors";
 import { authRoutes } from "./modules/auth/routes";
+import { noopMembershipEvents, type MembershipEvents } from "./modules/conversations/events";
+import { conversationRoutes } from "./modules/conversations/routes";
 import { TokenService } from "./modules/auth/tokens";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
 
 export interface AppDeps {
   db: Db;
+  /** Changements d'appartenance, branchés sur le temps réel quand il existe (architecture § 5.3). */
+  membershipEvents?: MembershipEvents;
 }
 
 declare module "fastify" {
@@ -99,6 +103,10 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
         secureCookies: config.NODE_ENV === "production",
       });
       await api.register(userRoutes, { authenticate });
+      await api.register(conversationRoutes, {
+        authenticate,
+        events: deps.membershipEvents ?? noopMembershipEvents,
+      });
     },
     { prefix: API_PREFIX },
   );

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import type { AuthResponse } from "@chatisen/shared";
-import { buildApp } from "../app";
+import { buildApp, type AppDeps } from "../app";
 import { loadConfig, type Config } from "../config";
 import { createTestDb, type TestDb } from "./db";
 
@@ -13,7 +13,10 @@ export interface TestApp {
 }
 
 /** Application complète sur une base jetable, sans port ouvert (requêtes via `app.inject`). */
-export async function createTestApp(env: Record<string, string> = {}): Promise<TestApp> {
+export async function createTestApp(
+  env: Record<string, string> = {},
+  deps: Omit<AppDeps, "db"> = {},
+): Promise<TestApp> {
   const testDb = await createTestDb();
   const config = loadConfig({
     NODE_ENV: "test",
@@ -21,7 +24,7 @@ export async function createTestApp(env: Record<string, string> = {}): Promise<T
     JWT_SECRET: randomBytes(48).toString("base64"),
     ...env,
   });
-  const app = buildApp(config, { db: testDb.db });
+  const app = buildApp(config, { db: testDb.db, ...deps });
   await app.ready();
   return {
     app,
