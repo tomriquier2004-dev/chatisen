@@ -4,7 +4,7 @@
 
 1. Une issue existe (ou est créée) pour le travail, rattachée à une ou plusieurs exigences (`FR-xx` / `NFR-xx`).
 2. Branche depuis `main` : `feat/<domaine>-<sujet>`, `fix/<domaine>-<sujet>`, `docs/<sujet>`, `chore/<sujet>`.
-   Domaines : `backend`, `front`, `infra`, `assurance`.
+   Domaines : `messagerie`, `appels`, `infra`, `projet`.
 3. Pull request obligatoire — **`main` est protégée**, aucun push direct.
 4. Revue croisée : **1 approbation venant d'un autre domaine**.
 5. CI verte requise avant merge. Merge en *squash*.
