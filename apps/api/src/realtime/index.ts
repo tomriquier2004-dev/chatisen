@@ -16,6 +16,9 @@ import {
 import { AppError } from "../errors";
 import { requireMember } from "../modules/conversations/service";
 import { messagesAfter, storeMessage } from "../modules/messages/service";
+import { conversationRoom, sessionRoom, userRoom, type RealtimeEvents } from "./events";
+
+export { conversationRoom, sessionRoom, userRoom } from "./events";
 
 export interface SocketData {
   userId: string;
@@ -24,8 +27,6 @@ export interface SocketData {
 
 export type IoServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
-export const userRoom = (userId: string) => `user:${userId}`;
-export const conversationRoom = (conversationId: string) => `conv:${conversationId}`;
 
 export interface Realtime {
   io: IoServer;
@@ -39,7 +40,10 @@ export interface Realtime {
  * - rooms `user:<id>` et `conv:<id>` jointes par le serveur d'après la base, jamais choisies par le client (FR-03) ;
  * - avec `redisUrl`, l'adapter Redis diffuse entre les instances d'API (NFR-02).
  */
-export async function attachRealtime(app: FastifyInstance, opts: { redisUrl?: string }): Promise<Realtime> {
+export async function attachRealtime(
+  app: FastifyInstance,
+  opts: { redisUrl?: string; events?: RealtimeEvents },
+): Promise<Realtime> {
   const io: IoServer = new Server(app.server, {
     path: "/socket.io",
     // Même origine que le client (Caddy en déploiement, proxy Vite en dev) : pas de CORS.
@@ -70,7 +74,11 @@ export async function attachRealtime(app: FastifyInstance, opts: { redisUrl?: st
         .select("conversation_id")
         .where("user_id", "=", claims.userId)
         .execute();
-      await socket.join([userRoom(claims.userId), ...memberships.map((m) => conversationRoom(m.conversation_id))]);
+      await socket.join([
+        userRoom(claims.userId),
+        sessionRoom(claims.sessionId),
+        ...memberships.map((m) => conversationRoom(m.conversation_id)),
+      ]);
 
       // À l'expiration du JWT, le client rafraîchit son token puis se reconnecte (architecture § 6.1).
       const ttl = claims.exp * 1000 - Date.now();
@@ -83,6 +91,8 @@ export async function attachRealtime(app: FastifyInstance, opts: { redisUrl?: st
       next(Object.assign(new Error(code), { data: { code } }));
     }
   });
+
+  opts.events?.bind(io);
 
   io.on("connection", (socket) => {
     const log = app.log.child({ socketId: socket.id, userId: socket.data.userId });

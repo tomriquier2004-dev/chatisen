@@ -10,6 +10,7 @@ import {
 import { AppError, unauthenticated } from "../../errors";
 import type { User } from "../../db/schema";
 import { dummyPasswordHash, hashPassword, verifyPassword } from "./passwords";
+import type { SessionEvents } from "./events";
 import { hashRefreshToken, newRefreshToken, type TokenService } from "./tokens";
 
 export interface AuthRoutesOptions {
@@ -17,6 +18,8 @@ export interface AuthRoutesOptions {
   refreshTtlDays: number;
   /** Cookie `Secure` : vrai en production (HTTPS). En dev, le site tourne en HTTP sur 127.0.0.1. */
   secureCookies: boolean;
+  /** Prévenu après chaque révocation, pour fermer les sockets de ces sessions. */
+  sessionEvents: SessionEvents;
 }
 
 const PG_UNIQUE_VIOLATION = "23505";
@@ -26,7 +29,7 @@ export function toMe(user: Pick<User, "id" | "username" | "display_name" | "emai
 }
 
 export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions): Promise<void> {
-  const { tokens, refreshTtlDays, secureCookies } = opts;
+  const { tokens, refreshTtlDays, secureCookies, sessionEvents } = opts;
   const db = app.db;
   const refreshTtlMs = refreshTtlDays * 24 * 3600 * 1000;
 
@@ -139,12 +142,16 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
 
     if (!consumed) {
       if (session.revoked_at !== null) {
-        await db
+        const revoked = await db
           .updateTable("sessions")
           .set({ revoked_at: new Date() })
           .where("family_id", "=", session.family_id)
           .where("revoked_at", "is", null)
+          .returning("id")
           .execute();
+        // Les sockets ouvertes avec un token de cette famille sont fermées aussi (le dernier access
+        // token émis porte l'identifiant de la dernière session de la famille).
+        await sessionEvents.sessionsRevoked([session.id, ...revoked.map((r) => r.id)]);
         request.log.warn({ userId: session.user_id, familyId: session.family_id }, "refresh token reuse detected");
       }
       clearRefreshCookie(reply);
@@ -158,12 +165,14 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
   app.post("/auth/logout", async (request, reply) => {
     const presented = request.cookies[REFRESH_COOKIE.name];
     if (presented) {
-      await db
+      const revoked = await db
         .updateTable("sessions")
         .set({ revoked_at: new Date() })
         .where("refresh_token_hash", "=", hashRefreshToken(presented))
         .where("revoked_at", "is", null)
+        .returning("id")
         .execute();
+      await sessionEvents.sessionsRevoked(revoked.map((r) => r.id));
     }
     clearRefreshCookie(reply);
     return reply.code(204).send();

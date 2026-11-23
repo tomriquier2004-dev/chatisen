@@ -5,6 +5,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@chatisen/share
 import { buildApp, type AppDeps } from "../app";
 import type { Config } from "../config";
 import { attachRealtime } from "../realtime";
+import { RealtimeEvents } from "../realtime/events";
 
 export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? "redis://127.0.0.1:6379";
 
@@ -17,9 +18,15 @@ export interface Instance {
 }
 
 /** Une instance d'API complète (REST + Socket.IO) sur un port libre, comme en déploiement multi-instances. */
-export async function startInstance(config: Config, deps: AppDeps, redisUrl: string | undefined = TEST_REDIS_URL): Promise<Instance> {
-  const app = buildApp(config, deps);
-  await attachRealtime(app, { redisUrl });
+export async function startInstance(
+  config: Config,
+  deps: AppDeps,
+  redisUrl: string | undefined = TEST_REDIS_URL,
+): Promise<Instance> {
+  // Même câblage que server.ts : les routes REST préviennent le temps réel.
+  const events = new RealtimeEvents();
+  const app = buildApp(config, { ...deps, membershipEvents: events, sessionEvents: events });
+  await attachRealtime(app, { redisUrl, events });
   await app.listen({ host: "127.0.0.1", port: 0 });
   const { port } = app.server.address() as AddressInfo;
   return { app, url: `http://127.0.0.1:${port}`, close: () => app.close() };

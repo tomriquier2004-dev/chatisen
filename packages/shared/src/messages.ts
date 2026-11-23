@@ -55,9 +55,35 @@ export const SYNC_LIMIT = 200;
 /** Réponse (ack) d'un événement client → serveur : un résultat, ou une erreur au format unique. */
 export type Ack<T> = { ok: true; data: T } | { ok: false; error: ErrorResponse["error"] };
 
+/** conversation:member-added (serveur → client) : reçu par le membre ajouté et par les autres membres (§ 5.3). */
+export const MemberAddedEvent = Type.Object(
+  {
+    conversationId: Uuid,
+    userId: Uuid,
+    role: Type.Union([Type.Literal("owner"), Type.Literal("admin"), Type.Literal("member")]),
+    by: Uuid,
+  },
+  { additionalProperties: false },
+);
+export type MemberAddedEvent = Static<typeof MemberAddedEvent>;
+
+/** conversation:member-removed (serveur → client) : reçu par le membre retiré et par les membres restants (§ 5.3). */
+export const MemberRemovedEvent = Type.Object(
+  {
+    conversationId: Uuid,
+    userId: Uuid,
+    by: Uuid,
+    reason: Type.Union([Type.Literal("removed"), Type.Literal("left"), Type.Literal("deleted")]),
+  },
+  { additionalProperties: false },
+);
+export type MemberRemovedEvent = Static<typeof MemberRemovedEvent>;
+
 /** Événements émis par le serveur (architecture § 5.2). */
 export interface ServerToClientEvents {
   "message:new": (message: Message) => void;
+  "conversation:member-added": (event: MemberAddedEvent) => void;
+  "conversation:member-removed": (event: MemberRemovedEvent) => void;
 }
 
 /** Événements émis par le client, avec leur ack. */
