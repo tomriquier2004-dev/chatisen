@@ -1,17 +1,15 @@
 import { useEffect, useState } from "preact/hooks";
-import { ConversationList, type ConversationView } from "@chatisen/shared";
-import { api, realtime, signOut } from "../../app/services";
+import { realtime, signOut } from "../../app/services";
 import type { Session } from "../../lib/api";
-import { ApiError } from "../../lib/errors";
 import type { ConnectionState } from "../../lib/socket";
 import { ChatView } from "../chat/ChatView";
+import { MembersDialog } from "../conversations/MembersDialog";
+import { NewConversationDialog } from "../conversations/NewConversationDialog";
+import { previewOf, titleOf } from "../conversations/model";
+import { useConversations } from "../conversations/useConversations";
 import styles from "./Shell.module.css";
 
-/** Titre affiché : celui du groupe, ou le nom de l'autre membre d'une conversation privée. */
-export function titleOf(conversation: ConversationView, meId: string): string {
-  if (conversation.title) return conversation.title;
-  return conversation.members.find((m) => m.user.id !== meId)?.user.displayName ?? "Conversation";
-}
+export { titleOf } from "../conversations/model";
 
 const CONNECTION_LABEL: Partial<Record<ConnectionState, string>> = {
   connecting: "Connexion au serveur…",
@@ -20,29 +18,18 @@ const CONNECTION_LABEL: Partial<Record<ConnectionState, string>> = {
 };
 
 /**
- * Espace connecté : liste des conversations (sections Privées et Groupes, design system § 5.2)
- * et vue de chat. La création et la gestion des membres viennent avec l'issue #79.
+ * Espace connecté : liste des conversations (sections Privées et Groupes, aperçu, non-lus en direct),
+ * création d'une conversation, gestion des membres et vue de chat (issues #79 et #80).
  */
 export function Shell({ session }: { session: Session }) {
   const meId = session.user.id;
-  const [conversations, setConversations] = useState<ConversationView[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const state = useConversations(meId);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [dialog, setDialog] = useState<"new" | "members" | null>(null);
 
   useEffect(() => realtime.onState(setConnection), []);
 
-  useEffect(() => {
-    api
-      .request("GET", "/conversations", ConversationList)
-      .then((list) => {
-        setConversations(list);
-        setSelectedId((current) => current ?? list[0]?.id ?? null);
-      })
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Chargement impossible."));
-  }, []);
-
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const selected = state.conversations.find((c) => c.id === state.selectedId) ?? null;
   const banner = CONNECTION_LABEL[connection];
 
   return (
@@ -54,13 +41,16 @@ export function Shell({ session }: { session: Session }) {
             Se déconnecter
           </button>
         </div>
-        {error && (
+        <button type="button" class={styles.create} onClick={() => setDialog("new")}>
+          + Créer une conversation
+        </button>
+        {state.error && (
           <p class={styles.error} role="alert">
-            {error}
+            {state.error}
           </p>
         )}
         {(["private", "group"] as const).map((type) => {
-          const list = conversations.filter((c) => c.type === type);
+          const list = state.conversations.filter((c) => c.type === type);
           return (
             <nav key={type} aria-labelledby={`section-${type}`}>
               <h2 id={`section-${type}`} class={styles.section}>
@@ -74,12 +64,15 @@ export function Shell({ session }: { session: Session }) {
                     <li key={c.id}>
                       <button
                         type="button"
-                        class={c.id === selectedId ? `${styles.item} ${styles.active}` : styles.item}
-                        aria-current={c.id === selectedId ? "page" : undefined}
-                        onClick={() => setSelectedId(c.id)}
+                        class={c.id === state.selectedId ? `${styles.item} ${styles.active}` : styles.item}
+                        aria-current={c.id === state.selectedId ? "page" : undefined}
+                        onClick={() => state.select(c.id)}
                       >
-                        <span class={styles.itemTitle}>{titleOf(c, meId)}</span>
-                        {c.unreadCount > 0 && c.id !== selectedId && (
+                        <span class={styles.itemText}>
+                          <span class={styles.itemTitle}>{titleOf(c, meId)}</span>
+                          <span class={styles.preview}>{previewOf(c, meId)}</span>
+                        </span>
+                        {c.unreadCount > 0 && c.id !== state.selectedId && (
                           <span class={styles.badge} aria-label={`${c.unreadCount} non lus`}>
                             {c.unreadCount}
                           </span>
@@ -100,12 +93,50 @@ export function Shell({ session }: { session: Session }) {
             {banner}
           </p>
         )}
+        {state.notice && (
+          <p class={styles.notice} role="status">
+            {state.notice}
+          </p>
+        )}
         {selected ? (
-          <ChatView key={selected.id} conversation={selected} meId={meId} title={titleOf(selected, meId)} />
+          <ChatView
+            key={selected.id}
+            conversation={selected}
+            meId={meId}
+            title={titleOf(selected, meId)}
+            onRead={(seq) => {
+              if (seq > selected.lastReadSeq) state.read(selected.id, seq);
+            }}
+            onShowMembers={selected.type === "group" ? () => setDialog("members") : undefined}
+          />
         ) : (
-          <p class={styles.placeholder}>Sélectionnez une conversation.</p>
+          <p class={styles.placeholder}>Sélectionnez ou créez une conversation.</p>
         )}
       </main>
+
+      {dialog === "new" && (
+        <NewConversationDialog
+          meId={meId}
+          onClose={() => setDialog(null)}
+          onCreated={(view) => {
+            state.put(view);
+            state.select(view.id);
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog === "members" && selected && (
+        <MembersDialog
+          conversation={selected}
+          meId={meId}
+          onClose={() => setDialog(null)}
+          onChanged={(view) => state.put(view)}
+          onLeft={() => {
+            setDialog(null);
+            state.select(null);
+          }}
+        />
+      )}
     </div>
   );
 }

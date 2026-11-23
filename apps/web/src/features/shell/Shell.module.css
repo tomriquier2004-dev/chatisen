@@ -75,6 +75,40 @@
   background: var(--color-brand-soft);
 }
 
+.itemText {
+  display: grid;
+  min-width: 0;
+}
+
+.preview {
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Action principale unique en tête de sidebar (design system § 5.1). */
+.create {
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-brand-primary);
+  color: var(--color-brand-ink);
+}
+
+.create:hover {
+  background: var(--color-brand-hover);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  font: var(--text-caption);
+  color: var(--color-status-info);
+  background: var(--color-status-info-bg);
+}
+
 .itemTitle {
   overflow: hidden;
   text-overflow: ellipsis;
