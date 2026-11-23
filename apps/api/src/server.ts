@@ -1,6 +1,8 @@
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
+import { createClient } from "redis";
 import { createDb, migrateToLatest } from "./db";
+import { MemoryRateLimiter, RedisRateLimiter } from "./plugins/rate-limit";
 import { attachRealtime } from "./realtime";
 import { RealtimeEvents } from "./realtime/events";
 
@@ -8,7 +10,14 @@ const config = loadConfig();
 const db = createDb(config.DATABASE_URL, config.DATABASE_POOL_SIZE);
 // Les routes REST préviennent le temps réel des changements d'appartenance et des révocations (§ 5.3).
 const events = new RealtimeEvents();
-const app = buildApp(config, { db, membershipEvents: events, sessionEvents: events });
+// Compteurs de limitation de débit partagés entre instances via Redis (issue #71).
+const limiterRedis = config.REDIS_URL ? createClient({ url: config.REDIS_URL }) : undefined;
+const rateLimiter = limiterRedis ? new RedisRateLimiter(limiterRedis) : new MemoryRateLimiter();
+const app = buildApp(config, { db, membershipEvents: events, sessionEvents: events, rateLimiter });
+if (limiterRedis) {
+  limiterRedis.on("error", (err) => app.log.warn({ err }, "redis error (rate limit)"));
+  app.addHook("onClose", async () => void (await limiterRedis.quit()));
+}
 
 // Arrêt propre : Docker et le terminal envoient SIGTERM / SIGINT, on termine les requêtes en cours.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -31,6 +40,7 @@ try {
   // Migrations au démarrage, sous le verrou de Kysely : plusieurs instances peuvent démarrer ensemble.
   const { results } = await migrateToLatest(db);
   for (const r of results ?? []) app.log.info({ migration: r.migrationName, status: r.status }, "migration");
+  await limiterRedis?.connect();
   await attachRealtime(app, { redisUrl: config.REDIS_URL, events });
   if (!config.REDIS_URL) app.log.warn("REDIS_URL absent : Socket.IO sans adapter Redis (une seule instance possible)");
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
