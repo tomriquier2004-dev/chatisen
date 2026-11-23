@@ -33,6 +33,12 @@ export class RealtimeEvents implements MembershipEvents, SessionEvents {
       .emit("conversation:member-added", { conversationId: e.conversationId, userId: e.userId, role: e.role, by: e.by });
   }
 
+  async memberRoleChanged(e: Parameters<MembershipEvents["memberRoleChanged"]>[0]): Promise<void> {
+    this.io
+      ?.to(conversationRoom(e.conversationId))
+      .emit("conversation:member-updated", { conversationId: e.conversationId, userId: e.userId, role: e.role, by: e.by });
+  }
+
   async memberRemoved(e: Parameters<MembershipEvents["memberRemoved"]>[0]): Promise<void> {
     if (!this.io) return;
     // 1. D'abord quitter la room : plus aucun message:new pour ce membre, sur toutes les instances.

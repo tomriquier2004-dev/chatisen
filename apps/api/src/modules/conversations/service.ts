@@ -52,6 +52,21 @@ export async function conversationViews(db: Db, userId: string, ids?: string[]):
     .orderBy("m.joined_at")
     .execute();
 
+  // Dernier message de chaque conversation, en une requête (DISTINCT ON + index (conversation_id, seq)).
+  const lastMessages = await db
+    .selectFrom("messages")
+    .selectAll()
+    .distinctOn("conversation_id")
+    .where(
+      "conversation_id",
+      "in",
+      conversations.map((c) => c.id),
+    )
+    .orderBy("conversation_id")
+    .orderBy("seq", "desc")
+    .execute();
+  const lastByConversation = new Map(lastMessages.map((m) => [m.conversation_id, m]));
+
   const byConversation = new Map<string, ConversationView["members"]>();
   for (const m of members) {
     const list = byConversation.get(m.conversation_id) ?? [];
@@ -59,7 +74,9 @@ export async function conversationViews(db: Db, userId: string, ids?: string[]):
     byConversation.set(m.conversation_id, list);
   }
 
-  return conversations.map((c) => ({
+  const views: ConversationView[] = conversations.map((c) => {
+    const last = lastByConversation.get(c.id);
+    return {
     id: c.id,
     type: c.type,
     title: c.title,
@@ -67,8 +84,23 @@ export async function conversationViews(db: Db, userId: string, ids?: string[]):
     lastSeq: c.last_seq,
     lastReadSeq: c.last_read_seq,
     unreadCount: Math.max(0, c.last_seq - c.last_read_seq),
+    lastMessage: last
+      ? {
+          id: last.id,
+          conversationId: last.conversation_id,
+          senderId: last.sender_id,
+          seq: last.seq,
+          clientMsgId: last.client_msg_id,
+          body: last.body,
+          createdAt: toIso(last.created_at),
+        }
+      : null,
     createdAt: toIso(c.created_at),
-  }));
+    };
+  });
+  // Les plus récemment actives en premier (dernier message, sinon création).
+  const activity = (v: ConversationView) => v.lastMessage?.createdAt ?? v.createdAt;
+  return views.sort((a, b) => activity(b).localeCompare(activity(a)));
 }
 
 export async function conversationView(db: Db, userId: string, conversationId: string): Promise<ConversationView> {
@@ -175,6 +207,33 @@ export async function addMember(
     .returning("user_id")
     .executeTakeFirst();
   if (!inserted) throw new AppError(409, "ALREADY_MEMBER", "Déjà membre de la conversation");
+}
+
+/**
+ * Changement de rôle (FR-16) : réservé au propriétaire, sur un autre membre qui n'est pas propriétaire.
+ * Renvoie true si le rôle a changé.
+ */
+export async function changeRole(
+  db: Db,
+  actorId: string,
+  conversationId: string,
+  userId: string,
+  role: "admin" | "member",
+): Promise<boolean> {
+  const actorRole = await requireMember(db, conversationId, actorId);
+  await requireGroup(db, conversationId);
+  if (actorRole !== "owner") throw forbidden("Seul le propriétaire change les rôles");
+  if (userId === actorId) throw forbidden("Le propriétaire ne change pas son propre rôle");
+  const targetRole = await membershipOf(db, conversationId, userId);
+  if (!targetRole) throw notFound("Cet utilisateur n'est pas membre de la conversation");
+  if (targetRole === role) return false;
+  await db
+    .updateTable("conversation_members")
+    .set({ role })
+    .where("conversation_id", "=", conversationId)
+    .where("user_id", "=", userId)
+    .execute();
+  return true;
 }
 
 /**

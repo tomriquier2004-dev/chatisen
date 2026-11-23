@@ -55,10 +55,11 @@ docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q postg
    ```bash
    docker compose run --rm -T \
      -v /run/user/$UID/age-identity:/run/secrets/age-identity:ro \
+     -e RESTORE_CONFIRM=chatisen \
      --entrypoint restore.sh postgres-backup \
      /backups/chatisen-AAAAMMJJTHHMMSSZ.dump.age /run/secrets/age-identity
    ```
-   Le script vérifie l'empreinte SHA-256, déchiffre, puis lance `pg_restore --clean --if-exists --exit-on-error`. **`--clean` remplace le contenu de la base cible** : toujours vérifier `PGHOST` / `PGDATABASE` avant. La sortie donne `duration_ms`.
+   **`--clean` remplace le contenu de la base cible.** Le script refuse donc de tourner si `RESTORE_CONFIRM` ne vaut pas exactement le nom de la base cible (`PGDATABASE`, ici `chatisen`) : écrire ce nom est la confirmation explicite, après avoir vérifié `PGHOST` / `PGDATABASE`. Le script vérifie ensuite l'empreinte SHA-256, déchiffre, puis lance `pg_restore --clean --if-exists --exit-on-error`. La sortie donne `duration_ms`.
 7. **Supprimer la clé privée du serveur** dès la fin de la restauration.
 8. **Vérifier** : `docker compose exec postgres psql -U chatisen -c 'SELECT count(*) FROM messages'`, puis `GET /api/v1/health/ready`.
 9. **Rouvrir** : `docker compose start api`. Les clients se reconnectent et rattrapent par `seq` (§ 6.3) ; les messages postérieurs à la sauvegarde sont perdus (RPO). Les messages restés en file d'attente locale côté client sont renvoyés avec leur `clientMsgId`.

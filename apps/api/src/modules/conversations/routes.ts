@@ -1,6 +1,7 @@
 import type { FastifyInstance, onRequestAsyncHookHandler } from "fastify";
 import {
   AddMemberRequest,
+  ChangeRoleRequest,
   ConversationList,
   ConversationParams,
   ConversationView,
@@ -14,6 +15,7 @@ import { RATE_RULES, rateLimit, type RateLimiter } from "../../plugins/rate-limi
 import type { MembershipEvents } from "./events";
 import {
   addMember,
+  changeRole,
   conversationView,
   conversationViews,
   createGroup,
@@ -96,6 +98,20 @@ export async function conversationRoutes(app: FastifyInstance, opts: Conversatio
       await events.memberAdded({ conversationId: id, userId: body.userId, role, by: userId });
       reply.code(201);
       return conversationView(db, userId, id);
+    },
+  );
+
+  app.patch(
+    "/conversations/:id/members/:userId",
+    { schema: { params: MemberParams, body: ChangeRoleRequest, response: { 200: ConversationView } } },
+    async (request) => {
+      const actor = requireAuth(request);
+      const { id, userId } = request.params as MemberParams;
+      const { role } = request.body as ChangeRoleRequest;
+      if (await changeRole(db, actor.userId, id, userId, role)) {
+        await events.memberRoleChanged({ conversationId: id, userId, role, by: actor.userId });
+      }
+      return conversationView(db, actor.userId, id);
     },
   );
 

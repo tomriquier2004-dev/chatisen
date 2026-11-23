@@ -8,6 +8,7 @@ let t: TestApp;
 const recorded: string[] = [];
 const events: MembershipEvents = {
   memberAdded: async (e) => void recorded.push(`added ${e.userId} to ${e.conversationId} as ${e.role}`),
+  memberRoleChanged: async (e) => void recorded.push(`role ${e.userId} in ${e.conversationId} -> ${e.role}`),
   memberRemoved: async (e) => void recorded.push(`removed ${e.userId} from ${e.conversationId} (${e.reason})`),
 };
 
@@ -29,6 +30,7 @@ function as(user: RegisteredUser) {
     get: (url: string) => t.app.inject({ method: "GET", url: `/api/v1${url}`, headers }),
     post: (url: string, payload: object) => t.app.inject({ method: "POST", url: `/api/v1${url}`, headers, payload }),
     del: (url: string) => t.app.inject({ method: "DELETE", url: `/api/v1${url}`, headers }),
+    patch: (url: string, payload: object) => t.app.inject({ method: "PATCH", url: `/api/v1${url}`, headers, payload }),
   };
 }
 
@@ -94,6 +96,7 @@ describe("groupes", () => {
     const m1 = await registerUser(t.app, "m1");
     const view = await group(owner, [m1]);
     expect(view.type).toBe("group");
+    expect(view.lastMessage).toBeNull();
     expect(view.title).toBe("Projet DevOps");
     expect(view.members).toEqual([
       { user: { id: owner.user.id, username: owner.user.username, displayName: owner.user.displayName }, role: "owner" },
@@ -216,6 +219,47 @@ describe("gestion des membres (FR-16)", () => {
     expect((await as(owner).del(`/conversations/${view.id}/members/${owner.user.id}`)).statusCode).toBe(204);
     const row = await t.testDb.db.selectFrom("conversations").select("id").where("id", "=", view.id).executeTakeFirst();
     expect(row).toBeUndefined();
+  });
+});
+
+describe("changement de rôle (PATCH /conversations/:id/members/:userId)", () => {
+  it("le propriétaire nomme un admin puis le rétrograde ; l'événement part à chaque changement", async () => {
+    const owner = await registerUser(t.app, "owner");
+    const m1 = await registerUser(t.app, "m1");
+    const view = await group(owner, [m1]);
+    recorded.length = 0;
+
+    const promote = await as(owner).patch(`/conversations/${view.id}/members/${m1.user.id}`, { role: "admin" });
+    expect(promote.statusCode).toBe(200);
+    expect((promote.json() as ConversationView).members.find((m) => m.user.id === m1.user.id)?.role).toBe("admin");
+    // Même rôle : rien ne change, aucun événement.
+    await as(owner).patch(`/conversations/${view.id}/members/${m1.user.id}`, { role: "admin" });
+    await as(owner).patch(`/conversations/${view.id}/members/${m1.user.id}`, { role: "member" });
+    expect(recorded).toEqual([
+      `role ${m1.user.id} in ${view.id} -> admin`,
+      `role ${m1.user.id} in ${view.id} -> member`,
+    ]);
+  });
+
+  it("refuse à un admin, au propriétaire sur lui-même, et sur une conversation privée", async () => {
+    const owner = await registerUser(t.app, "owner");
+    const admin = await registerUser(t.app, "admin");
+    const m1 = await registerUser(t.app, "m1");
+    const view = await group(owner, [m1]);
+    await as(owner).post(`/conversations/${view.id}/members`, { userId: admin.user.id, role: "admin" });
+
+    expect((await as(admin).patch(`/conversations/${view.id}/members/${m1.user.id}`, { role: "admin" })).statusCode).toBe(403);
+    expect((await as(owner).patch(`/conversations/${view.id}/members/${owner.user.id}`, { role: "member" })).statusCode).toBe(403);
+    const priv = (await as(owner).post("/conversations", { type: "private", userId: m1.user.id })).json();
+    const res = await as(owner).patch(`/conversations/${priv.id}/members/${m1.user.id}`, { role: "admin" });
+    expect(res.json().error.code).toBe("NOT_A_GROUP");
+  });
+
+  it("refuse le rôle owner (transfert de propriété hors périmètre)", async () => {
+    const owner = await registerUser(t.app, "owner");
+    const m1 = await registerUser(t.app, "m1");
+    const view = await group(owner, [m1]);
+    expect((await as(owner).patch(`/conversations/${view.id}/members/${m1.user.id}`, { role: "owner" })).statusCode).toBe(400);
   });
 });
 
