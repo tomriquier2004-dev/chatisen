@@ -34,34 +34,48 @@ B. **k3s** — réplicas, déploiements progressifs ; suspendu par le planning (
 
 1. **Compose sur un hôte unique** (option A). k3s reste suspendu ; il ne sera rouvert qu'après J3 et seulement si le Core et les mesures sont en avance.
 2. **Hébergement : Google Cloud, une VM Compute Engine** (option 1), avec une **IP externe statique réservée**, attachée à la VM (une IP éphémère change si la VM est recréée et obligerait à refaire demander les sous-domaines).
-   - Région en Europe, pour la latence depuis la salle de démo (choix exact _à compléter_).
-   - Système Debian ou Ubuntu LTS, architecture **amd64**. Dimensionnement de départ : 2 vCPU et 8 Go de RAM, à confirmer par la mesure de la consommation de la pile (il s'agit d'une hypothèse, pas d'un résultat).
-   - **Alerte de budget** configurée dès la création du compte de facturation, pour éviter une facture imprévue.
-   - **Accès partagé** : au moins un second membre (binôme CI/déploiement, [`team.md`](../team.md)) reçoit un rôle IAM limité à Compute Engine, afin que le compte ne repose pas sur une seule personne.
+   - **Réalisé le 23 novembre 2026** : projet GCP `chatisen`, région `europe-west1` (Belgique, choisie pour la latence depuis l'Europe), zone `europe-west1-b`, VM `chatisen-prod`, type `e2-standard-2` (2 vCPU, 8 Go de RAM), Debian 12 en **amd64**, disque de 40 Go `pd-balanced`, IP externe statique `chatisen-ip` attachée, étiquette réseau `chatisen`, OS Login activé.
+   - Le dimensionnement (2 vCPU, 8 Go) est une **hypothèse** à confirmer par la mesure de la consommation de la pile, pas un résultat.
+   - Docker Engine et Docker Compose installés sur la VM ; `docker run hello-world` réussi.
+   - **Pare-feu VPC** : règle `chatisen-web` (tcp 80 et 443) et règle `chatisen-turn` (tcp 3478, udp 3478, tcp 5349, udp 49152-49252), toutes deux ciblées par l'étiquette `chatisen`.
+   - **Alerte de budget** : 135 € (la moitié du crédit de 269 €), avec des seuils à 25, 50, 75 et 90 % sur les dépenses réelles. Une alerte prévient, elle ne coupe rien.
+   - **Accès partagé** : voir le point 7.
 3. **Images en `linux/amd64` seulement.** Pas de build multi-architecture tant que l'hôte reste x86 ; à rouvrir si l'hôte devient ARM (plan B ou VM ARM).
-4. **Plan B décidé d'avance : un VPS loué** (option 3). Déclencheur : **si aucune VM GCP n'est utilisable à la fin de J0 (mardi 24 novembre)**. Fournisseur et prix : _à compléter_. Le plan B est préférable à un retard sur J1, qui entraînerait J2 (coturn) puis tous les axes de mesure.
+4. **Plan B : un VPS loué** (option 3), qui reprendrait le même Compose si GCP devenait inutilisable (crédit épuisé, compte suspendu). Il n'est **pas préparé** à ce stade : le déclencheur prévu initialement (fin de J0) est caduc puisque la VM GCP existe.
 5. **Réseau et DNS** :
    - sous-domaines à demander **en une seule fois** par Tom : `dc-ops` (client), `api`, `turn`, `grafana` (sous `dc-ops.isen.fedyna.fr`), dès que l'IP externe est connue ;
    - certificats TLS par sous-domaine (défi HTTP-01, sans wildcard) ;
    - `turn` pointe **directement** sur l'hôte, sans proxy HTTP ;
    - ports ouverts par des **règles de pare-feu VPC** ciblées par étiquette réseau : 22 (clé SSH uniquement, source restreinte si possible), 80 et 443 (TCP), 3478 (UDP et TCP), 5349 (TCP), plage UDP de relais **restreinte** (valeur à fixer dans l'ADR-0009). Aucun port de base de données ni de métriques n'est exposé à Internet.
 6. **Reproductibilité** : le déploiement est décrit par des fichiers versionnés dans `infra/` (issue #12) ; aucune étape manuelle non documentée. Les secrets sont dans les GitHub Environments et dans un fichier `.env` hors dépôt sur l'hôte (`chmod 600`).
+7. **Exploitation et maîtrise des coûts** :
+   - **Rôles** : Sha (infra) est administratrice principale ; Tom (binôme CI/déploiement, [`team.md`](../team.md)) est second administrateur, avec l'administration IAM. Theo et Mathys ont les rôles « Administrateur d'instances Compute (v1) » et « Connexion au système d'exploitation Compute » : ils peuvent démarrer, arrêter et se connecter en SSH, sans rôle d'administration IAM.
+   - **Règle d'extinction** : celui qui démarre la VM l'arrête en fin de session ; l'astreinte de la semaine vérifie chaque soir qu'elle est éteinte.
+   - **Filet de sécurité** : un calendrier d'instance `arret-nuit-minuit` (région `europe-west1`) arrête la VM chaque jour à 00h00, heure de Paris.
+   - **Le compte reste en essai gratuit** : ne pas le mettre à niveau vers un compte de facturation payant.
+   - Les adresses des membres de l'équipe et l'identifiant exact du projet ne sont pas consignés dans le dépôt (public).
 
 ## Conséquences
 
 - **Point unique de défaillance assumé** : un seul hôte, donc pas de haute disponibilité. NFR-02 (scalabilité) et NFR-03 (disponibilité) sont traitées par la **mesure** (test de point de rupture d'une instance, scénarios de panne et de redémarrage, restauration testée), pas par la redondance. Cette limite est énoncée dans le rapport.
 - **Le test de charge se mesure sur une instance sans scalabilité.** Le générateur de charge tourne **hors** de l'hôte testé, sinon il fausse la mesure. Le trafic sortant de ces tests est facturé : il entre dans le budget.
-- **Coût réel** : contrairement à l'hypothèse « free tier », l'hébergement a un coût. Le crédit d'essai doit couvrir la période jusqu'au 11 décembre avec une marge ; à vérifier à l'ouverture du compte, avant d'accepter cet ADR.
+- **Coût et crédit** : le compte dispose de **269 € de crédit, valables 90 jours (jusqu'au 22 février 2027)**, soit au-delà de la soutenance du 11 décembre. D'après la console GCP, rien n'est facturé pendant l'essai ; à la fin de l'essai (crédit épuisé ou fin de la période) les ressources sont interrompues, sauf passage à un compte payant. L'arrêt de la VM économise le calcul mais **pas le disque ni l'IP statique**, qui restent facturés (sur le crédit). La consommation réelle n'est pas encore connue : elle sera relevée dans les rapports de facturation et jointe au chapitre 12.
+- **Compromis de l'extinction** : une VM éteinte ne fait ni sauvegardes (toutes les 6 h), ni collecte de métriques, ni déploiement par la CI. Pendant les mesures (J2 à J4) et les répétitions de démo, la VM doit être allumée ; le calendrier d'arrêt nocturne est à suspendre ces jours-là si nécessaire.
+- **Compte de service par défaut à durcir** : la VM utilise le compte de service Compute Engine par défaut, qui porte le rôle historique « Éditeur ». Un compte de service dédié, sans rôle, limiterait les dégâts en cas de compromission d'un conteneur. À traiter avant J3 (la VM doit être arrêtée pour changer de compte de service).
+- **Pare-feu du réseau `default`** : un projet GCP neuf crée normalement des règles génériques (SSH, RDP, ICMP, trafic interne) qui s'appliquent à toutes les instances. Leur présence est **à vérifier** (`gcloud compute firewall-rules list`). Si elle existe, la règle RDP (port 3389) est inutile et doit être supprimée ; SSH ouvert à Internet ne s'appuie que sur OS Login (clé) et est à restreindre (IAP ou plage de sources) avant J3.
 - **Sauvegardes** : tant qu'aucune copie hors hôte n'existe (issue #42), la perte de la VM entraîne la perte des sauvegardes avec les données. Un stockage objet GCP dans une autre zone est une piste ; à décider avant J4.
 - **Écart avec la réponse de l'encadrant** : il a cité Oracle ; le changement de fournisseur lui est signalé par Tom (consigné dans `prof-qa.md`, qui reste réservé à ses réponses).
 - **À revoir** si le crédit GCP n'est pas disponible, si l'encadrant impose un autre hôte, ou si le Core et les mesures sont en avance après J3 (réouverture de k3s).
 
 ## À vérifier avant de passer à « accepté »
 
-- [ ] Compte de facturation GCP actif, crédit ou budget confirmé, alerte de budget en place.
-- [ ] VM créée (région, type, disque), **IP externe statique réservée** et attachée.
-- [ ] Un second membre a un accès IAM limité à Compute Engine.
+- [x] Compte de facturation GCP actif, crédit de 269 € confirmé, alerte de budget en place.
+- [x] VM créée (région, type, disque), **IP externe statique réservée** et attachée.
+- [x] Un second membre a un accès IAM limité (Tom, administration IAM ; Theo et Mathys, Compute Engine).
+- [x] Docker et Compose installés sur la VM, `hello-world` réussi.
 - [ ] Ports 80, 443, 3478, 5349 et plage UDP joignables **depuis l'extérieur** (test depuis un réseau tiers).
 - [ ] Sous-domaines créés par l'encadrant et résolus vers l'IP.
+- [ ] Calendrier d'arrêt nocturne vérifié (la VM s'arrête bien à 00h00).
+- [ ] Règle RDP du réseau `default` supprimée ; SSH durci.
+- [ ] Compte de service dédié attaché à la VM.
 - [ ] Consommation réelle de la pile mesurée, dimensionnement confirmé ou corrigé.
-- [ ] Plan B : fournisseur choisi et budget validé par l'équipe.
