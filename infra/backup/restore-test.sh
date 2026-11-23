@@ -65,9 +65,19 @@ echo "== Restauration de ${latest} dans une base vierge"
 t0=$(now_ms)
 "${dc[@]}" run --rm -T \
   -v "$work/key.txt:/run/secrets/age-identity:ro" \
-  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore \
+  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore -e RESTORE_CONFIRM=chatisen_restore \
   --entrypoint restore.sh postgres-backup "$latest" /run/secrets/age-identity
 restore_ms=$(($(now_ms) - t0))
+
+echo "== Garde-fou : une restauration sans confirmation est refusée"
+if "${dc[@]}" run --rm -T \
+  -v "$work/key.txt:/run/secrets/age-identity:ro" \
+  -e PGHOST=postgres-restore -e PGDATABASE=chatisen_restore -e RESTORE_CONFIRM=chatisen \
+  --entrypoint restore.sh postgres-backup "$latest" /run/secrets/age-identity 2>"$work/refused.log"; then
+  echo "ÉCHEC : restore.sh a accepté une confirmation qui ne correspond pas à la base cible" >&2
+  exit 1
+fi
+grep -q "RESTORE_CONFIRM=chatisen_restore" "$work/refused.log"
 
 echo "== Vérification"
 target_fp="$(fingerprint postgres-restore chatisen_restore)"
