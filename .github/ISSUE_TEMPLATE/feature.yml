@@ -1,0 +1,24 @@
+name: Fonctionnalité / tâche
+description: Travail rattaché à une ou plusieurs exigences
+labels: ["type: feature"]
+body:
+  - type: input
+    id: requirements
+    attributes:
+      label: Exigence(s)
+      placeholder: FR-05, NFR-01
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Critères d'acceptation
+      description: Comment saura-t-on que c'est fini ? Quelle preuve (test, mesure, capture) ?
+    validations:
+      required: true

@@ -1,0 +1,27 @@
+# Dépendances / build
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Environnements & secrets (ne jamais committer)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Infra locale
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# OS / éditeurs
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

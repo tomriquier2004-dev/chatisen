@@ -1,0 +1,11 @@
+{
+  "name": "chatisen",
+  "private": true,
+  "version": "0.0.0",
+  "description": "ChatISEN - plateforme de communication temps réel (projet académique DevOps 2026-2027, ISEN)",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {}
+}

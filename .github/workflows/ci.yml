@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-hygiene:
+    name: PR hygiene
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Titre au format Conventional Commits
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|docs|test|refactor|perf|build|ci|chore)(\([a-z0-9._-]+\))?!?: .+'
+          if ! [[ "$TITLE" =~ $re ]]; then
+            echo "::error::Titre de PR invalide : « $TITLE ». Attendu : type(scope): description (voir CONTRIBUTING.md)."
+            exit 1
+          fi
+      - name: Issue liée et exigence référencée
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' <<<"$BODY"; then
+            echo "::error::La PR doit contenir « Closes #<n> » (issue liée)."
+            exit 1
+          fi
+          if ! grep -Eq '\b(FR|NFR|SEC)-[0-9]{2}\b' <<<"$BODY"; then
+            echo "::error::La PR doit référencer au moins une exigence (FR-xx, NFR-xx ou SEC-xx)."
+            exit 1
+          fi
+
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep scan
+        run: semgrep scan --config auto --error --metrics=off
+
+  # À ajouter au fil des phases (voir issues du milestone « 3 - Application ») :
+  #   lint -> tests (Vitest) -> build image Docker -> Trivy -> push registry -> deploy
