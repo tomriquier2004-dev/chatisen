@@ -13,10 +13,10 @@ Le projet est noté sur le **DevOps** : infrastructure, CI/CD, exploitation. Ces
 
 | Rôle | Domaine | Personne |
 | --- | --- | --- |
-| **Infra** | Lead plateforme : Compose/k3s, IaC, registry, secrets, stack d'observabilité, modèles de pipeline | _à définir_ |
-| **Dev Messagerie** | Auth, utilisateurs, conversations, messages temps réel, historique, reprise de connexion — back **et** front | _à définir_ |
-| **Dev Appels** | Signalisation WebRTC, écrans d'appel, micro/caméra, partage d'écran, qualité d'appel, coturn — back **et** front | _à définir_ |
-| **Flex** | Chef de projet, releases, sécurité du pipeline, plan d'urgence, joker | _à définir_ |
+| **Infra** | Lead plateforme : Compose/k3s, IaC, registry, secrets, stack d'observabilité, modèles de pipeline | Sha (@Shamina934), lead infra |
+| **Dev Messagerie** | Auth, utilisateurs, conversations, messages temps réel, historique, reprise de connexion — back **et** front | Mathys (@MathysGbs) ou Theo (@theocb13) — à répartir |
+| **Dev Appels** | Signalisation WebRTC, écrans d'appel, micro/caméra, partage d'écran, qualité d'appel, coturn — back **et** front | Mathys (@MathysGbs) ou Theo (@theocb13) — à répartir |
+| **Flex** | Chef de projet, releases, sécurité du pipeline, plan d'urgence, joker | Tom (@tomriquier2004-dev), chef de projet |
 
 ## Périmètres
 
