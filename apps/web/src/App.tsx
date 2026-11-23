@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, realtime, useSession } from "./app/services";
 import { AuthScreen } from "./features/auth/AuthScreen";
-import { Home } from "./features/home/Home";
+import { Shell } from "./features/shell/Shell";
 
 /**
  * Racine de l'application : restaure la session au chargement (cookie de refresh httpOnly),
@@ -31,5 +31,5 @@ export function App() {
       </p>
     );
   }
-  return session ? <Home session={session} /> : <AuthScreen />;
+  return session ? <Shell session={session} /> : <AuthScreen />;
 }
