@@ -364,7 +364,9 @@ flowchart TB
         end
         subgraph Internal["Réseau interne Docker"]
             API["api (N instances)<br/>:3000"]
-            PG[("postgres")]
+            PG[("postgres<br/>volume pg-data")]
+            BKP["postgres-backup<br/>pg_dump chiffré (age), toutes les 6 h"]
+            VBK[("volume pg-backups")]
             RD[("redis")]
             PROM["prometheus"]
             LOKI["loki"]
@@ -376,6 +378,9 @@ flowchart TB
     CADDY -- "/grafana (auth)" --> GRAF
     API --> PG
     API --> RD
+    BKP -- "pg_dump" --> PG
+    BKP -- "fichiers .dump.age" --> VBK
+    VBK -. "copie hors hôte (à venir)" .-> OFF["stockage distant"]
     PROM --> API
     PROM --> EXP
     PROM --> COTURN
@@ -386,6 +391,7 @@ flowchart TB
 - **Un seul `docker compose up`** démarre l'environnement complet ; les mêmes images servent en dev et en déploiement (NFR-07).
 - coturn tourne de préférence en `network_mode: host` : le NAT de Docker sur une large plage UDP dégrade les performances et complique la configuration.
 - **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne.
+- **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
 - **Hébergement** : non défini (question 4 dans [`prof-qa.md`](prof-qa.md)). L'architecture ne suppose qu'une VM avec Docker et une IP publique (nécessaire pour TURN). Kubernetes (k3s) est une évolution possible si la scalabilité doit être démontrée au-delà de Compose — ADR « Compose vs Kubernetes ».
 
@@ -413,7 +419,7 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 | Injection / payload malformé | Validation par schéma (TypeBox) sur tout le REST et tous les événements ; requêtes paramétrées | — |
 | XSS | Échappement par défaut de Preact (aucun `dangerouslySetInnerHTML`) ; CSP stricte servie par Caddy | — |
 | Abus TURN (relais ouvert) | Identifiants éphémères HMAC ; `denied-peer-ip` sur les plages privées | — |
-| Données au repos | Volume Postgres sur l'hôte ; sauvegardes chiffrées | **Pas de chiffrement de bout en bout des messages** : le serveur peut lire l'historique. Choix assumé (la recherche et l'historique côté serveur en dépendent), à énoncer dans le rapport |
+| Données au repos | Volume Postgres sur l'hôte ; sauvegardes chiffrées par age avec une clé publique, clé privée hors du serveur (§ 8.1) | Sauvegardes sur le même hôte tant qu'aucune copie distante n'existe. **Pas de chiffrement de bout en bout des messages** : le serveur peut lire l'historique. Choix assumé (la recherche et l'historique côté serveur en dépendent), à énoncer dans le rapport |
 | Chaîne d'approvisionnement | Semgrep, Dependabot (avec délai de 7 jours), règles pnpm, actions épinglées par SHA, Trivy | — |
 
 ---
@@ -438,7 +444,7 @@ Alertes de départ (à calibrer après les premiers tests de charge) : taux d'er
 | --- | --- | --- |
 | Une instance d'API | Ses clients sont déconnectés | Reconnexion automatique vers une autre instance + rattrapage par `seq` |
 | Redis | Plus de diffusion inter-instances ni de présence | Avec une seule instance, la messagerie continue ; l'état se reconstruit au redémarrage (Redis ne contient rien de durable) |
-| PostgreSQL | Plus d'envoi ni d'historique | `/health/ready` passe en échec ; le client affiche une erreur explicite et garde les messages en file d'attente locale |
+| PostgreSQL | Plus d'envoi ni d'historique | `/health/ready` passe en échec ; le client affiche une erreur explicite et garde les messages en file d'attente locale. Données perdues ou corrompues : restauration de la dernière sauvegarde selon le runbook (perte max 6 h) |
 | coturn | Les appels entre clients derrière un NAT strict échouent ; le P2P direct fonctionne encore | Alerte dédiée ; message d'erreur explicite côté client |
 | Signalisation pendant un appel | **L'appel en cours continue** (le média est P2P) ; seule une renégociation est impossible | — |
 
@@ -466,7 +472,7 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | FR-17 | Reconnexion Socket.IO + `conversation:sync` + idempotence | § 6.3 |
 | FR-18 | Format d'erreur unique, contraintes d'unicité | § 4, § 5.1 |
 | NFR-01, NFR-02 | API sans état, adapter Redis, métriques | § 10 |
-| NFR-03 | Sondes de santé, scénarios de panne | § 10.2 |
+| NFR-03 | Sondes de santé, scénarios de panne, sauvegarde et restauration testée | § 8.1, § 10.2 |
 | NFR-04 | TLS, Argon2id, JWT + rotation, contrôle d'appartenance | § 9 |
 | NFR-05 | Monorepo TypeScript, `packages/shared`, schémas uniques | § 3, § 5 |
 | NFR-06 | Prometheus, Loki, Grafana | § 10.1 |
