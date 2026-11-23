@@ -211,6 +211,66 @@ describe("historique et rattrapage", () => {
   });
 });
 
+describe("aperçu, non-lus et accusés de lecture", () => {
+  it("GET /conversations donne le dernier message et trie par activité ; message:read remet les non-lus à zéro", async () => {
+    const alice = await registerUser(a.app, "alice");
+    const bob = await registerUser(a.app, "bob");
+    const older = await groupOf(alice, [bob]);
+    const newer = await groupOf(alice, [bob]);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(a, bob);
+    await send(aliceSocket, newer.id, "dans la récente");
+    await send(aliceSocket, older.id, "un");
+    await send(aliceSocket, older.id, "deux");
+
+    const list = async () =>
+      (
+        await a.app.inject({ method: "GET", url: "/api/v1/conversations", headers: { authorization: `Bearer ${bob.accessToken}` } })
+      ).json() as ConversationView[];
+
+    let convs = await list();
+    // La conversation la plus récemment active passe en tête, avec son dernier message.
+    expect(convs[0]?.id).toBe(older.id);
+    expect(convs[0]?.lastMessage?.body).toBe("deux");
+    expect(convs[0]?.unreadCount).toBe(2);
+
+    const read = (await bobSocket.timeout(2000).emitWithAck("message:read", { conversationId: older.id, seq: 99 })) as Ack<{ lastReadSeq: number }>;
+    // Borné au dernier message existant.
+    expect(read).toEqual({ ok: true, data: { lastReadSeq: 2 } });
+    // Ne recule jamais.
+    const back = (await bobSocket.timeout(2000).emitWithAck("message:read", { conversationId: older.id, seq: 1 })) as Ack<{ lastReadSeq: number }>;
+    expect(back).toEqual({ ok: true, data: { lastReadSeq: 2 } });
+
+    convs = await list();
+    expect(convs.find((c) => c.id === older.id)?.unreadCount).toBe(0);
+    expect(convs.find((c) => c.id === newer.id)?.unreadCount).toBe(1);
+  });
+
+  it("refuse l'accusé de lecture d'un non-membre", async () => {
+    const alice = await registerUser(a.app, "alice");
+    const outsider = await registerUser(a.app, "outsider");
+    const conv = await groupOf(alice, []);
+    const socket = await open(a, outsider);
+    const res = (await socket.timeout(2000).emitWithAck("message:read", { conversationId: conv.id, seq: 1 })) as Ack<unknown>;
+    expect(res).toMatchObject({ ok: false, error: { code: "CONVERSATION_FORBIDDEN" } });
+  });
+
+  it("un changement de rôle est diffusé aux membres connectés", async () => {
+    const alice = await registerUser(a.app, "alice");
+    const bob = await registerUser(a.app, "bob");
+    const conv = await groupOf(alice, [bob]);
+    const bobOnB = await open(b, bob);
+    const updated = nextEvent(bobOnB, "conversation:member-updated");
+    await a.app.inject({
+      method: "PATCH",
+      url: `/api/v1/conversations/${conv.id}/members/${bob.user.id}`,
+      headers: { authorization: `Bearer ${alice.accessToken}` },
+      payload: { role: "admin" },
+    });
+    expect(await updated).toEqual({ conversationId: conv.id, userId: bob.user.id, role: "admin", by: alice.user.id });
+  });
+});
+
 describe("/health/ready", () => {
   it("rapporte Redis quand l'adapter est actif", async () => {
     const res = await a.app.inject({ method: "GET", url: "/api/v1/health/ready" });

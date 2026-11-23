@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { PublicUser } from "./auth";
 import { Uuid } from "./ids";
+import { Message } from "./messages";
 
 export const ConversationType = Type.Union([Type.Literal("private"), Type.Literal("group")]);
 export type ConversationType = Static<typeof ConversationType>;
@@ -33,6 +34,8 @@ export const ConversationView = Type.Object(
     /** Dernier seq lu par l'utilisateur courant. */
     lastReadSeq: Type.Integer({ minimum: 0 }),
     unreadCount: Type.Integer({ minimum: 0 }),
+    /** Dernier message, pour l'aperçu de la liste (null si aucun). */
+    lastMessage: Type.Union([Message, Type.Null()]),
     createdAt: Type.String(),
   },
   { additionalProperties: false, $id: "ConversationView" },
@@ -72,6 +75,13 @@ export type ConversationParams = Static<typeof ConversationParams>;
 
 export const MemberParams = Type.Object({ id: Uuid, userId: Uuid }, { additionalProperties: false });
 export type MemberParams = Static<typeof MemberParams>;
+
+/** PATCH /api/v1/conversations/:id/members/:userId : changement de rôle, réservé au propriétaire (FR-16). */
+export const ChangeRoleRequest = Type.Object(
+  { role: Type.Union([Type.Literal("admin"), Type.Literal("member")]) },
+  { additionalProperties: false },
+);
+export type ChangeRoleRequest = Static<typeof ChangeRoleRequest>;
 
 /** GET /api/v1/users?query= : recherche par nom d'utilisateur ou nom affiché (FR-02). */
 export const UserSearchQuery = Type.Object(

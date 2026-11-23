@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { SYNC_LIMIT, type Message, type MessageSendPayload } from "@chatisen/shared";
 import type { Db } from "../../db";
 import type { Message as MessageRow } from "../../db/schema";
@@ -112,4 +113,18 @@ export async function messagesAfter(db: Db, conversationId: string, afterSeq: nu
     .limit(SYNC_LIMIT)
     .execute();
   return rows.map(toMessage);
+}
+
+/** Avance last_read_seq de l'utilisateur (jamais en arrière, jamais au-delà de last_seq). */
+export async function markRead(db: Db, conversationId: string, userId: string, seq: number): Promise<{ lastReadSeq: number }> {
+  const row = await db
+    .updateTable("conversation_members as m")
+    .from("conversations as c")
+    .set({ last_read_seq: sql`GREATEST(m.last_read_seq, LEAST(${seq}::bigint, c.last_seq))` })
+    .whereRef("c.id", "=", "m.conversation_id")
+    .where("m.conversation_id", "=", conversationId)
+    .where("m.user_id", "=", userId)
+    .returning("m.last_read_seq")
+    .executeTakeFirstOrThrow();
+  return { lastReadSeq: row.last_read_seq };
 }
