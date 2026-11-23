@@ -20,6 +20,15 @@ Exemple : `feat(api): add refresh token rotation`.
 
 Le titre de la PR suit le même format (il devient le message du squash).
 
+## Versions et releases
+
+Les versions sont calculées par [release-please](https://github.com/googleapis/release-please) à partir des titres de PR mergées sur `main` ([ADR-0014](docs/adr/0014-release-please.md)) :
+
+- `feat` → version mineure, `fix` → patch, `!` (ex. `feat(api)!: …`) → changement cassant ;
+- `docs` apparaît aussi dans le changelog ; `ci`, `chore`, `build`, `test`, `refactor` n'y apparaissent pas.
+
+Conséquences : **toujours merger en squash** et **soigner le titre de la PR**, c'est lui qui finit dans `CHANGELOG.md`. release-please tient à jour une PR « chore(main): release x.y.z » ; la merger crée le tag `vx.y.z` et la release GitHub. Ne pas éditer `CHANGELOG.md` à la main.
+
 ## Traçabilité
 
 - Chaque PR référence l'exigence adressée (`FR-xx`, `NFR-xx`) **et** une issue (`Closes #n`).

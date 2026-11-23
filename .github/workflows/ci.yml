@@ -16,7 +16,8 @@ concurrency:
 jobs:
   pr-hygiene:
     name: PR hygiene
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    # Ignorée pour Dependabot et pour la Release PR de release-please (titre et corps générés).
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     steps:
       - name: Titre au format Conventional Commits
