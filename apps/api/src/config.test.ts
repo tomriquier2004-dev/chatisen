@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "./config";
 
 describe("loadConfig", () => {
-  it("applique les valeurs par défaut", () => {
+  it("applique les valeurs par défaut de développement", () => {
     expect(loadConfig({})).toEqual({
       NODE_ENV: "development",
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
       LOG_LEVEL: "info",
+      DATABASE_URL: "postgres://chatisen:chatisen-dev@127.0.0.1:5432/chatisen",
+      DATABASE_POOL_SIZE: 10,
     });
   });
 
@@ -22,5 +24,15 @@ describe("loadConfig", () => {
 
   it("refuse un niveau de log inconnu", () => {
     expect(() => loadConfig({ LOG_LEVEL: "verbose" })).toThrow(ConfigError);
+  });
+
+  it("exige DATABASE_URL en production, sans valeur par défaut", () => {
+    expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/);
+  });
+
+  it("ne répète pas la valeur fautive dans le message d'erreur", () => {
+    expect(() => loadConfig({ DATABASE_URL: "mysql://user:s3cret@db/x" })).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining("s3cret") }),
+    );
   });
 });

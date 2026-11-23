@@ -1,19 +1,53 @@
 import { Value } from "@sinclair/typebox/value";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ErrorResponse, HealthLiveResponse } from "@chatisen/shared";
+import { ErrorResponse, HealthLiveResponse, HealthReadyResponse } from "@chatisen/shared";
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
+import { createDb } from "./db";
+import { createTestDb, type TestDb } from "./test/db";
 
-const app = buildApp(loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent" }));
+const config = loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent" });
+let testDb: TestDb;
+let app: ReturnType<typeof buildApp>;
 
-beforeAll(() => app.ready());
-afterAll(() => app.close());
+beforeAll(async () => {
+  testDb = await createTestDb();
+  app = buildApp(config, { db: testDb.db });
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+  await testDb.drop();
+});
 
 describe("GET /api/v1/health/live", () => {
   it("répond 200 selon le contrat partagé", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/health/live" });
     expect(res.statusCode).toBe(200);
     expect(Value.Check(HealthLiveResponse, res.json())).toBe(true);
+  });
+});
+
+describe("GET /api/v1/health/ready", () => {
+  it("répond 200 quand Postgres est joignable", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/health/ready" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ready", checks: { postgres: "up" } });
+  });
+
+  it("répond 503 quand Postgres est injoignable", async () => {
+    const deadDb = createDb("postgres://nobody:nothing@127.0.0.1:1/none", 1);
+    const deadApp = buildApp(config, { db: deadDb });
+    try {
+      const res = await deadApp.inject({ method: "GET", url: "/api/v1/health/ready" });
+      expect(res.statusCode).toBe(503);
+      expect(Value.Check(HealthReadyResponse, res.json())).toBe(true);
+      expect(res.json().checks.postgres).toBe("down");
+    } finally {
+      await deadApp.close();
+      await deadDb.destroy();
+    }
   });
 });
 

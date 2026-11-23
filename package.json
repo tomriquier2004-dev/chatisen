@@ -13,7 +13,9 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "db:up": "docker compose -f infra/compose/compose.dev.yml up -d --wait",
+    "db:down": "docker compose -f infra/compose/compose.dev.yml down"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

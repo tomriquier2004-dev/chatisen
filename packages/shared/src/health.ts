@@ -12,3 +12,18 @@ export const HealthLiveResponse = Type.Object(
   { additionalProperties: false, $id: "HealthLiveResponse" },
 );
 export type HealthLiveResponse = Static<typeof HealthLiveResponse>;
+
+export const DependencyStatus = Type.Union([Type.Literal("up"), Type.Literal("down")]);
+
+/**
+ * GET /api/v1/health/ready : l'instance peut servir du trafic (dépendances joignables).
+ * 200 si tout est « up », 503 sinon (NFR-03). Redis s'ajoutera avec Socket.IO.
+ */
+export const HealthReadyResponse = Type.Object(
+  {
+    status: Type.Union([Type.Literal("ready"), Type.Literal("not_ready")]),
+    checks: Type.Object({ postgres: DependencyStatus }, { additionalProperties: false }),
+  },
+  { additionalProperties: false, $id: "HealthReadyResponse" },
+);
+export type HealthReadyResponse = Static<typeof HealthReadyResponse>;
