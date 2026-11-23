@@ -11,6 +11,10 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
-    proxy: { "/api": apiTarget },
+    proxy: {
+      "/api": apiTarget,
+      // Socket.IO en WebSocket, relayé lui aussi vers l'API locale.
+      "/socket.io": { target: apiTarget, ws: true },
+    },
   },
 });
