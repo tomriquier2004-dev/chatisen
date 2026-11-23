@@ -35,5 +35,5 @@ Option 3 (architecture § 6.1, PR #64) :
 - **Limite assumée** : après un logout ou une révocation, un access token reste valide jusqu'à **15 minutes**. Les sockets de la session sont fermées tout de suite (#75), mais un appel REST avec ce token passe encore.
 - **Limite assumée** : un XSS peut utiliser le token tant que la page est ouverte (il est en mémoire). La protection contre le XSS reste l'échappement systématique et la CSP (architecture § 9).
 - La fenêtre de grâce rend indétectable un rejeu dans les 10 s qui suivent la consommation du token ; l'attaquant n'obtient alors qu'un 401.
-- **Limite connue** (#73) : le cookie n'est `Secure` qu'avec `NODE_ENV=production`, et les valeurs de développement (clé JWT aléatoire) s'appliquent sinon. À corriger avant le déploiement.
+- **Configuration de production** (#73) : le cookie est `Secure` partout sauf en `development` / `test` sur une adresse locale (ou selon `COOKIE_SECURE` s'il est fourni), et l'API refuse de démarrer sur une adresse non locale avec la clé JWT ou la base de développement, même si `NODE_ENV=production` a été oublié.
 - Le brute force sur `/auth/*` est freiné par la limitation de débit (#71), pas par le seul coût d'Argon2id.
