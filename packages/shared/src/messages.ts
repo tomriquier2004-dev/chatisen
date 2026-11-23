@@ -52,6 +52,13 @@ export type ConversationSyncPayload = Static<typeof ConversationSyncPayload>;
 /** Nombre maximal de messages renvoyés par un conversation:sync ; au-delà, le client pagine par REST. */
 export const SYNC_LIMIT = 200;
 
+/** message:read (client → serveur) : l'utilisateur a lu jusqu'à `seq` ; ack avec le nouveau lastReadSeq. */
+export const MessageReadPayload = Type.Object(
+  { conversationId: Uuid, seq: Type.Integer({ minimum: 0 }) },
+  { additionalProperties: false },
+);
+export type MessageReadPayload = Static<typeof MessageReadPayload>;
+
 /** Réponse (ack) d'un événement client → serveur : un résultat, ou une erreur au format unique. */
 export type Ack<T> = { ok: true; data: T } | { ok: false; error: ErrorResponse["error"] };
 
@@ -79,15 +86,29 @@ export const MemberRemovedEvent = Type.Object(
 );
 export type MemberRemovedEvent = Static<typeof MemberRemovedEvent>;
 
+/** conversation:member-updated (serveur → client) : rôle d'un membre changé (FR-16). */
+export const MemberUpdatedEvent = Type.Object(
+  {
+    conversationId: Uuid,
+    userId: Uuid,
+    role: Type.Union([Type.Literal("owner"), Type.Literal("admin"), Type.Literal("member")]),
+    by: Uuid,
+  },
+  { additionalProperties: false },
+);
+export type MemberUpdatedEvent = Static<typeof MemberUpdatedEvent>;
+
 /** Événements émis par le serveur (architecture § 5.2). */
 export interface ServerToClientEvents {
   "message:new": (message: Message) => void;
   "conversation:member-added": (event: MemberAddedEvent) => void;
   "conversation:member-removed": (event: MemberRemovedEvent) => void;
+  "conversation:member-updated": (event: MemberUpdatedEvent) => void;
 }
 
 /** Événements émis par le client, avec leur ack. */
 export interface ClientToServerEvents {
   "message:send": (payload: MessageSendPayload, ack: (res: Ack<Message>) => void) => void;
   "conversation:sync": (payload: ConversationSyncPayload, ack: (res: Ack<Message[]>) => void) => void;
+  "message:read": (payload: MessageReadPayload, ack: (res: Ack<{ lastReadSeq: number }>) => void) => void;
 }
