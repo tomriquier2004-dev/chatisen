@@ -15,6 +15,7 @@ Prérequis : Node ≥ 22 et pnpm (version fixée par `packageManager` dans `pack
 
 ```bash
 pnpm install      # dépendances de tout le monorepo
+pnpm dev          # API (:3000) + client (:5173) en parallèle, voir README « Lancer en local »
 pnpm lint         # ESLint sur tout le dépôt
 pnpm typecheck    # tsc --noEmit dans chaque paquet
 pnpm test         # Vitest dans chaque paquet

@@ -1,0 +1,79 @@
+/*
+ * Tokens du design system : docs/DESIGN_SYSTEM.md § 2 à § 5.
+ * Source unique des couleurs, typographies, espacements et rayons de l'interface.
+ * Ne pas ajouter de token ici sans mettre à jour le design system.
+ */
+:root,
+[data-theme="light"] {
+  /* § 2.1 Palette principale et surfaces */
+  --color-brand-primary: #f4c842;
+  --color-brand-hover: #e5b832;
+  --color-brand-soft: #fdf6dc;
+  --color-brand-ink: #18181b;
+  --color-bg-canvas: #f6f5f2;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #efece6;
+
+  /* § 2.2 Texte et bordures */
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #8e8e98;
+  --color-border-subtle: #e4e2dc;
+  --color-border-strong: #d0cdc4;
+
+  /* § 2.3 Sémantique (avec modération) */
+  --color-status-success: #16a34a;
+  --color-status-success-bg: #dcfce7;
+  --color-status-warning: #d97706;
+  --color-status-warning-bg: #fef3c7;
+  --color-status-danger: #dc2626;
+  --color-status-danger-bg: #fee2e2;
+  --color-status-info: #2563eb;
+  --color-status-info-bg: #dbeafe;
+
+  /* § 3 Typographie : Geist et Geist Mono, auto-hébergées (paquets @fontsource-variable) */
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --text-display: 600 1.375rem/28px var(--font-sans);
+  --text-heading: 600 1rem/24px var(--font-sans);
+  --text-section: 600 0.6875rem/16px var(--font-sans);
+  --text-body: 400 0.906rem/22px var(--font-sans);
+  --text-ui: 500 0.844rem/20px var(--font-sans);
+  --text-caption: 400 0.75rem/16px var(--font-sans);
+  --text-code: 400 0.75rem/18px var(--font-mono);
+  --tracking-section: 0.06em;
+
+  /* § 4 Espacements (grille de 4 px), rayons, bordures */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 8px;
+  --radius-avatar: 10px;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+  --border-subtle: 1px solid var(--color-border-subtle);
+
+  /* § 5.1 Sidebar */
+  --sidebar-width: 296px;
+  --sidebar-width-collapsed: 76px;
+
+  color-scheme: light;
+}
+
+/* § 2.4 Thème sombre préparé : seules les surfaces et le texte changent. */
+[data-theme="dark"] {
+  --color-bg-canvas: #121214;
+  --color-bg-surface: #1a1a1e;
+  --color-bg-subtle: #242429;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-border-subtle: #27272a;
+  --color-brand-soft: rgba(244, 200, 66, 0.14);
+
+  color-scheme: dark;
+}

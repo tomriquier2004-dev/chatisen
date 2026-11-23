@@ -9,7 +9,7 @@ Plateforme de communication temps réel : **messagerie**, **appels voix** et **v
 
 ## État
 
-🚧 **Phase 0 — Cadrage.** Pas de code applicatif tant que la spécification et les ADR ne sont pas écrits.
+🚧 **Squelette de l'application en cours** (jalon J0 du [planning](docs/planning.md)) : outillage, contrats partagés, API et client minimaux, sans logique métier.
 
 | Livrable | Où |
 | --- | --- |
@@ -29,12 +29,25 @@ Plateforme de communication temps réel : **messagerie**, **appels voix** et **v
 ## Structure du dépôt
 
 ```
-apps/web          Client (Preact + TypeScript + Vite)        — prévu
-apps/api          API + Socket.IO (Node + TypeScript)        — prévu
+apps/web          Client (Preact + TypeScript + Vite)        — squelette
+apps/api          API + Socket.IO (Node + TypeScript)        — squelette (Fastify, sans Socket.IO)
 packages/shared   Types partagés (contrats d'API et d'événements)
 infra/            Docker, Compose, coturn, monitoring, CI/CD
 docs/             Spécification, ADR, rapport, rapports de mesure
 ```
+
+## Lancer en local
+
+Prérequis : Node ≥ 22 et pnpm (version fixée par `packageManager` dans `package.json` : `corepack enable`, ou préfixer les commandes par `npx pnpm@10.34.9` si corepack n'est pas disponible).
+
+```bash
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` démarre ensemble l'API (http://127.0.0.1:3000, rechargée à chaque modification) et le client (http://127.0.0.1:5173). Ouvrir **http://127.0.0.1:5173** : le client relaie `/api` vers l'API, et la page d'accueil affiche « API : opérationnelle » quand les deux tournent. `Ctrl+C` arrête les deux.
+
+Pas encore de base de données ni de Docker à ce stade. Vérifications : voir [`CONTRIBUTING.md`](CONTRIBUTING.md#vérifications-locales).
 
 La stack ci-dessus est une **hypothèse de travail** : aucun choix n'est acté tant qu'il n'a pas d'ADR dans `docs/adr/`.
 
