@@ -1,6 +1,7 @@
 import { SYNC_LIMIT, type Message, type MessageSendPayload } from "@chatisen/shared";
 import type { Db } from "../../db";
 import type { Message as MessageRow } from "../../db/schema";
+import { AppError } from "../../errors";
 import { toIso } from "../conversations/service";
 
 const PG_UNIQUE_VIOLATION = "23505";
@@ -30,7 +31,9 @@ async function findByClientMsgId(db: Db, conversationId: string, clientMsgId: st
  * Enregistre un message (architecture § 4 et § 6.2). L'appelant a vérifié l'appartenance.
  * - seq attribué dans la même transaction que l'insertion (`UPDATE … last_seq + 1 RETURNING`) ;
  * - idempotent sur (conversation, clientMsgId) : un renvoi après coupure renvoie le message déjà
- *   stocké avec `created: false`, sans doublon ni nouvelle diffusion (FR-17, FR-18).
+ *   stocké avec `created: false`, sans doublon ni nouvelle diffusion (FR-17, FR-18) ;
+ * - seulement pour le même expéditeur : un clientMsgId déjà pris par un autre membre est refusé,
+ *   sans jamais renvoyer le message de quelqu'un d'autre (issue #74).
  */
 export async function storeMessage(
   db: Db,
@@ -38,7 +41,7 @@ export async function storeMessage(
   payload: MessageSendPayload,
 ): Promise<{ message: Message; created: boolean }> {
   const existing = await findByClientMsgId(db, payload.conversationId, payload.clientMsgId);
-  if (existing) return { message: toMessage(existing), created: false };
+  if (existing) return replay(existing, senderId);
 
   try {
     const row = await db.transaction().execute(async (trx) => {
@@ -66,10 +69,18 @@ export async function storeMessage(
     // sa transaction (y compris l'incrément de seq) est annulée, et on renvoie le premier.
     if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
       const winner = await findByClientMsgId(db, payload.conversationId, payload.clientMsgId);
-      if (winner) return { message: toMessage(winner), created: false };
+      if (winner) return replay(winner, senderId);
     }
     throw err;
   }
+}
+
+/** Renvoi d'un message déjà stocké : autorisé seulement pour son propre expéditeur. */
+function replay(existing: MessageRow, senderId: string): { message: Message; created: false } {
+  if (existing.sender_id !== senderId) {
+    throw new AppError(409, "VALIDATION_FAILED", "clientMsgId déjà utilisé dans cette conversation");
+  }
+  return { message: toMessage(existing), created: false };
 }
 
 /** Page d'historique : `limit` messages de seq < `before` (ou les plus récents), triés par seq croissant. */
