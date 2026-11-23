@@ -7,6 +7,7 @@ import type { MemberRole } from "@chatisen/shared";
  */
 export interface MembershipEvents {
   memberAdded(e: { conversationId: string; userId: string; role: MemberRole; by: string }): Promise<void>;
+  memberRoleChanged(e: { conversationId: string; userId: string; role: MemberRole; by: string }): Promise<void>;
   memberRemoved(e: {
     conversationId: string;
     userId: string;
@@ -17,5 +18,6 @@ export interface MembershipEvents {
 
 export const noopMembershipEvents: MembershipEvents = {
   memberAdded: async () => undefined,
+  memberRoleChanged: async () => undefined,
   memberRemoved: async () => undefined,
 };
