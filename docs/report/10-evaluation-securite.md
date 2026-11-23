@@ -37,3 +37,26 @@ Menaces visées : brute force sur un compte, attaque par pulvérisation (un mot 
 - **Proxy** : derrière Caddy, il faut `TRUST_PROXY=true` pour compter l'adresse réelle du client. Sans proxy, l'activer laisserait un client choisir l'adresse comptée via `X-Forwarded-For`.
 - **Verrouillage par un tiers** : la limite par compte permet à quelqu'un de bloquer la connexion d'un autre pendant 15 minutes en tentant de mauvais mots de passe. C'est le compromis classique face au brute force.
 - La fenêtre fixe autorise jusqu'à deux fois la limite à cheval sur deux fenêtres.
+
+### Temps réel (issue #88)
+
+| Cible | Règle | Seuil de départ |
+| --- | --- | --- |
+| `message:send` | par utilisateur, toutes sockets et instances confondues | 20 / 10 secondes |
+| Connexions Socket.IO | simultanées par utilisateur, toutes instances confondues | 10 |
+
+- `message:send` au-delà de la limite : ack `{ ok: false, error: { code: "RATE_LIMITED" } }`. La vérification a lieu **avant** le contrôle d'appartenance et toute écriture : ni transaction, ni verrou de conversation.
+- Connexion de trop : refusée au handshake (`connect_error` « RATE_LIMITED »). Le décompte passe par l'adapter Redis (`fetchSockets` sur la room `user:<id>`), donc il couvre toutes les instances.
+- Démontré par `socket-rate-limit.test.ts`, avec deux instances d'API et des compteurs Redis communs : le 21e message est refusé alors que les envois étaient répartis sur deux instances, et la base contient exactement 20 messages. La 11e connexion est refusée puis acceptée quand une place se libère, sans effet sur les autres utilisateurs.
+
+### Redis indisponible : décision
+
+Les compteurs passent par un `FallbackRateLimiter` : si Redis ne répond pas, chaque instance **bascule sur des compteurs en mémoire**. Le client Redis du limiteur est en `disableOfflineQueue`, pour qu'une commande échoue tout de suite au lieu d'attendre la reconnexion.
+
+- Pourquoi : **tout refuser** rendrait la connexion et la messagerie inutilisables pendant une panne de Redis, ce qui contredit NFR-03. **Tout laisser passer** supprimerait la protection contre le brute force au moment où l'on est déjà en mode dégradé.
+- Vérifié à la main (bundle de l'API, Redis arrêté) : les connexions répondent en environ 0,3 s avec la bascule journalisée, et `/health/ready` répond 503 `redis: down` en environ 1 s. Avant ce correctif, la sonde ne répondait plus, car le ping Redis attendait la reconnexion.
+- **Limite** : pendant la panne, les limites s'appliquent **par instance**. Avec N instances, un attaquant peut obtenir jusqu'à N fois la limite. Le plafond de connexions dépend aussi de l'adapter Redis : pendant la panne, il ne voit que les sockets de l'instance locale.
+
+**Limites (temps réel)**
+- Seuils non mesurés, à calibrer avec les tests de charge (#24). 20 messages en 10 s couvre une conversation animée, mais pas un collage massif de lignes.
+- Les autres événements (`conversation:sync`, `message:read`) ne sont pas limités : ils ne font que lire, ou une écriture bornée par utilisateur.
