@@ -10,6 +10,7 @@ import {
   UserSearchResponse,
 } from "@chatisen/shared";
 import { requireAuth } from "../../plugins/authenticate";
+import { RATE_RULES, rateLimit, type RateLimiter } from "../../plugins/rate-limit";
 import type { MembershipEvents } from "./events";
 import {
   addMember,
@@ -24,6 +25,7 @@ import {
 export interface ConversationRoutesOptions {
   authenticate: onRequestAsyncHookHandler;
   events: MembershipEvents;
+  limits: { limiter: RateLimiter; enabled: boolean };
 }
 
 /** Routes REST des conversations et de leurs membres (architecture § 5.1, FR-03, FR-06, FR-16). */
@@ -33,7 +35,9 @@ export async function conversationRoutes(app: FastifyInstance, opts: Conversatio
   // onRequest : l'authentification passe avant la lecture et la validation du corps.
   app.addHook("onRequest", opts.authenticate);
 
-  app.get("/users", { schema: { querystring: UserSearchQuery, response: { 200: UserSearchResponse } } }, async (request) => {
+  // Limite par utilisateur : freine le parcours de l'annuaire par requêtes successives (issue #71).
+  const limitSearch = rateLimit(opts.limits.limiter, opts.limits.enabled, RATE_RULES.userSearchPerUser);
+  app.get("/users", { preHandler: limitSearch, schema: { querystring: UserSearchQuery, response: { 200: UserSearchResponse } } }, async (request) => {
     const { userId } = requireAuth(request);
     return searchUsers(db, (request.query as UserSearchQuery).query, userId);
   });

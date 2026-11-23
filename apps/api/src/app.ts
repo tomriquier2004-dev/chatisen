@@ -20,6 +20,7 @@ import { messageRoutes } from "./modules/messages/routes";
 import { TokenService } from "./modules/auth/tokens";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
+import { MemoryRateLimiter, type RateLimiter } from "./plugins/rate-limit";
 
 export interface AppDeps {
   db: Db;
@@ -27,6 +28,8 @@ export interface AppDeps {
   membershipEvents?: MembershipEvents;
   /** Révocations de sessions, pour la déconnexion forcée des sockets (architecture § 5.3). */
   sessionEvents?: SessionEvents;
+  /** Compteurs de limitation de débit ; en mémoire par défaut, Redis en déploiement (issue #71). */
+  rateLimiter?: RateLimiter;
 }
 
 declare module "fastify" {
@@ -48,7 +51,9 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
     // Pas de requestIdHeader : un identifiant envoyé par le client ne fait pas foi.
     logger: { level: config.LOG_LEVEL },
     genReqId: () => randomUUID(),
+    trustProxy: config.TRUST_PROXY,
   });
+  const limits = { limiter: deps.rateLimiter ?? new MemoryRateLimiter(), enabled: config.RATE_LIMIT_ENABLED };
 
   const tokens = new TokenService(config.JWT_SECRET, config.ACCESS_TOKEN_TTL_SECONDS);
   const authenticate = makeAuthenticate(tokens);
@@ -110,12 +115,14 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
         refreshTtlDays: config.REFRESH_TOKEN_TTL_DAYS,
         secureCookies: config.NODE_ENV === "production",
         sessionEvents: deps.sessionEvents ?? noopSessionEvents,
+        limits,
       });
       await api.register(userRoutes, { authenticate });
       await api.register(messageRoutes, { authenticate });
       await api.register(conversationRoutes, {
         authenticate,
         events: deps.membershipEvents ?? noopMembershipEvents,
+        limits,
       });
     },
     { prefix: API_PREFIX },

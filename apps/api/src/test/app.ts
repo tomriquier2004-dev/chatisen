@@ -21,6 +21,8 @@ export async function createTestApp(
   const config = loadConfig({
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
+    // Les tests inscrivent beaucoup de comptes depuis 127.0.0.1 ; rate-limit.test.ts réactive la limite.
+    RATE_LIMIT_ENABLED: "false",
     JWT_SECRET: randomBytes(48).toString("base64"),
     ...env,
   });
