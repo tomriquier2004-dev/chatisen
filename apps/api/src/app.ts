@@ -45,6 +45,22 @@ function errorBody(code: ErrorCode, message: string, requestId: string): ErrorRe
   return { error: { code, message, requestId } };
 }
 
+/** Correspondance statut HTTP → code d'erreur (architecture § 5.1, issue #60). */
+export function codeForStatus(status: number): { code: ErrorCode; message: string } {
+  switch (status) {
+    case 401:
+      return { code: "UNAUTHENTICATED", message: "Authentification requise" };
+    case 403:
+      return { code: "FORBIDDEN", message: "Action non autorisée" };
+    case 404:
+      return { code: "NOT_FOUND", message: "Ressource introuvable" };
+    case 429:
+      return { code: "RATE_LIMITED", message: "Trop de requêtes, réessayez plus tard" };
+    default:
+      return { code: "VALIDATION_FAILED", message: "Requête invalide" };
+  }
+}
+
 export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
   const app = Fastify({
     // Logs JSON (pino) ; chaque ligne porte reqId, le même identifiant que error.requestId (architecture § 10.1).
@@ -77,7 +93,9 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
       request.log.error({ err: error }, "unhandled error");
       return reply.code(500).send(errorBody("INTERNAL_ERROR", "Erreur interne du serveur", request.id));
     }
-    return reply.code(status).send(errorBody("VALIDATION_FAILED", error.message, request.id));
+    // Autres 4xx (plugins, parseur JSON…) : code selon le statut, message générique (pas de détail interne).
+    const { code, message } = codeForStatus(status);
+    return reply.code(status).send(errorBody(code, message, request.id));
   });
 
   app.setNotFoundHandler((request, reply) =>

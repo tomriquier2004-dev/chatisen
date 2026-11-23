@@ -127,6 +127,27 @@ describe("message:send → message:new", () => {
     expect(Number(count.n)).toBe(1);
   });
 
+  it("refuse un clientMsgId déjà utilisé par un autre membre, sans rien diffuser (#74)", async () => {
+    const alice = await registerUser(a.app, "alice");
+    const bob = await registerUser(a.app, "bob");
+    const conv = await groupOf(alice, [bob]);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(a, bob);
+    const clientMsgId = randomUUID();
+
+    const aliceBroadcast = nextEvent(bobSocket, "message:new");
+    const first = await send(aliceSocket, conv.id, "message d'Alice", clientMsgId);
+    expect(first.ok).toBe(true);
+    await aliceBroadcast;
+
+    const silent = noEvent(aliceSocket, "message:new");
+    const collision = await send(bobSocket, conv.id, "message de Bob", clientMsgId);
+    expect(collision).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+    // Bob ne reçoit pas le message d'Alice dans son ack, et rien n'est diffusé.
+    expect(JSON.stringify(collision)).not.toContain("message d'Alice");
+    expect(await silent).toBe(true);
+  });
+
   it("valide le payload", async () => {
     const alice = await registerUser(a.app, "alice");
     const aliceSocket = await open(a, alice);

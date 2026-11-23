@@ -26,6 +26,12 @@ export interface AuthRoutesOptions {
 
 const PG_UNIQUE_VIOLATION = "23505";
 
+/**
+ * Durée pendant laquelle la réutilisation d'un refresh token tout juste consommé est traitée comme
+ * une course entre requêtes légitimes plutôt que comme un vol (issue #72, ADR-0007).
+ */
+export const REFRESH_GRACE_MS = 10_000;
+
 export function toMe(user: Pick<User, "id" | "username" | "display_name" | "email">): Me {
   return { id: user.id, username: user.username, displayName: user.display_name, email: user.email };
 }
@@ -148,7 +154,23 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
       .executeTakeFirst();
 
     if (!consumed) {
-      if (session.revoked_at !== null) {
+      // Relecture après l'échec : la ligne lue plus haut peut dater d'avant la requête concurrente.
+      const current = await db
+        .selectFrom("sessions")
+        .select("revoked_at")
+        .where("id", "=", session.id)
+        .executeTakeFirstOrThrow();
+      const revokedAt = current.revoked_at === null ? null : new Date(current.revoked_at);
+
+      // Fenêtre de grâce (issue #72) : un token consommé il y a quelques secondes vient très
+      // probablement d'une requête concurrente légitime (deux onglets, ou un onglet et une
+      // reconnexion Socket.IO). On refuse sans effacer le cookie : la réponse gagnante a déjà posé
+      // le nouveau, et le client peut réessayer avec lui. Pas de révocation de la famille.
+      if (revokedAt && Date.now() - revokedAt.getTime() < REFRESH_GRACE_MS) {
+        throw unauthenticated("Rafraîchissement déjà effectué, réessayez");
+      }
+
+      if (revokedAt) {
         const revoked = await db
           .updateTable("sessions")
           .set({ revoked_at: new Date() })

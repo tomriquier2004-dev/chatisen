@@ -211,6 +211,18 @@ Tous les schémas sont définis **une seule fois** dans `packages/shared` et imp
 
 Format d'erreur unique (FR-18) : `{ "error": { "code": "CONVERSATION_FORBIDDEN", "message": "…", "requestId": "…" } }`. Les codes sont une union TypeScript dans `packages/shared`, donc le client peut afficher un message précis pour chacun.
 
+Correspondance entre statut HTTP et code (`apps/api/src/app.ts`, issue #60) : les erreurs métier portent leur propre code (`USERNAME_TAKEN`, `CONVERSATION_FORBIDDEN`…). Les autres erreurs prennent le code de leur statut, avec un message générique qui ne laisse passer aucun détail interne (message d'un parseur, d'un plugin) :
+
+| Statut | Code |
+| --- | --- |
+| 400 (validation de schéma) | `VALIDATION_FAILED`, avec le champ fautif |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `FORBIDDEN` |
+| 404 | `NOT_FOUND` |
+| 429 | `RATE_LIMITED` |
+| autre 4xx | `VALIDATION_FAILED` |
+| 5xx | `INTERNAL_ERROR` (détail uniquement dans les logs) |
+
 ### 5.2 Événements Socket.IO
 
 Convention : `domaine:action`. Les événements client → serveur utilisent l'**ack** Socket.IO pour renvoyer un résultat ou une erreur.
