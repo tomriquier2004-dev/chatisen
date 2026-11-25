@@ -20,6 +20,8 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
   useEffect(() => calls.subscribe(setState), []);
   const localStream = calls.localStream;
   const remoteStream = calls.remoteStream;
+  const localCameraEnabled = calls.cameraEnabled;
+  const remoteCameraEnabled = calls.remoteCameraEnabled;
   const conversationId = "conversationId" in state ? state.conversationId : null;
   const conversation = conversations.find((item) => item.id === conversationId);
   const peerId = "peerId" in state ? state.peerId : null;
@@ -35,7 +37,7 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
     if (localVideo.current) localVideo.current.srcObject = localStream;
     if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream;
     if (remoteAudio.current) remoteAudio.current.srcObject = remoteStream;
-  }, [localStream, remoteStream, state.status]);
+  }, [localStream, remoteStream, localCameraEnabled, remoteCameraEnabled, state.status]);
 
   useEffect(() => {
     if (state.status !== "connected") {
@@ -108,12 +110,21 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
           <div class={styles.media}>
             {media === "video" ? (
               <div class={styles.remote}>
-                {remoteStream ? (
+                {remoteStream && remoteCameraEnabled ? (
                   <video ref={remoteVideo} autoPlay playsInline class={styles.remoteVideo} aria-label="Vidéo de votre correspondant" />
+                ) : remoteStream && !remoteCameraEnabled ? (
+                  <>
+                    <p role="status">Caméra de {peerName} coupée</p>
+                    <audio ref={remoteAudio} autoPlay />
+                  </>
                 ) : (
                   <p role="status">{connected ? "La vidéo de votre correspondant arrive…" : "Connexion média…"}</p>
                 )}
-                {localStream && <video ref={localVideo} autoPlay playsInline muted class={styles.localVideo} aria-label="Aperçu de votre caméra" />}
+                {localStream && localCameraEnabled ? (
+                  <video ref={localVideo} autoPlay playsInline muted class={styles.localVideo} aria-label="Aperçu de votre caméra" />
+                ) : localStream && !localCameraEnabled ? (
+                  <p class={styles.localCameraOff} role="status">Votre caméra est coupée</p>
+                ) : null}
               </div>
             ) : (
               <div class={styles.audio}>
