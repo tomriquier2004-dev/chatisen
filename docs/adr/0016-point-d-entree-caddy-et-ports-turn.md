@@ -47,6 +47,7 @@ B. **Un sous-domaine par service** (`api.`, `turn.`, `grafana.`) — séparation
 ## Conséquences
 
 - **Risque R4 maintenu** : un réseau qui ne laisse passer que le 443 bloquera les appels qui ont besoin du relais TURN. Ce risque est **mesuré** depuis le réseau de la salle de démo (question encore ouverte pour le prof). Si le blocage est avéré, les options restantes sont la seconde IP dédiée ou le routage par SNI.
+- **Isolation de coturn** : l'ADR-0018 propose de déplacer le relais sur une VM distincte avec IP publique dédiée. Cette proposition complète la règle de ports ci-dessus sans modifier le point d'entrée Caddy ; elle reste en attente de validation du fournisseur et du budget.
 - **Sans TLS sur coturn**, les messages TURN ne sont pas chiffrés ; le média WebRTC l'est toujours (DTLS-SRTP). Cette limite est à énoncer dans le rapport de sécurité.
 - **Même origine pour le client et l'API** : plus simple et plus sûr côté cookies, mais une faille XSS dans le client atteindrait l'API avec les mêmes privilèges de navigateur ; la CSP et l'échappement par défaut de Preact en sont la protection.
 - **Let's Encrypt** demande que le port 80 soit joignable et que la VM soit allumée pour émettre et renouveler le certificat. La durée de validité d'un certificat Let's Encrypt est de l'ordre de plusieurs semaines (à vérifier à l'émission) ; Caddy renouvelle seul et retente si le renouvellement tombe pendant l'arrêt nocturne.
