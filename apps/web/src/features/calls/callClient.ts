@@ -228,7 +228,9 @@ export class CallClient {
       if (pc.connectionState === "connected") {
         this.dispatch({ type: "connected" });
         if (!this.quality) {
-          this.quality = new CallQualityCollector(this.apiClient, callId, pc);
+          this.quality = new CallQualityCollector(this.apiClient, callId, pc, {
+            onSample: (sample) => this.dispatch({ type: "candidate", candidateType: sample.candidateType }),
+          });
           this.quality.start();
         }
       }
