@@ -47,6 +47,7 @@ export class CallClient {
   private peer: RTCPeerConnection | null = null;
   private pendingIce: RTCIceCandidateInit[] = [];
   private pendingAccepted: CallAcceptedEvent | null = null;
+  private pendingEnded: CallEndedEvent | null = null;
   private disposed = false;
 
   constructor(options: CallClientOptions = {}) {
@@ -81,7 +82,12 @@ export class CallClient {
       const ack = await this.emitAck<CallInviteAck>("call:invite", { conversationId, media });
       this.assertAck(ack);
       this.dispatch({ type: "identified", callId: ack.data.callId });
-      if (this.pendingAccepted?.callId === ack.data.callId) {
+      if (this.pendingEnded?.callId === ack.data.callId) {
+        const ended = this.pendingEnded;
+        this.pendingEnded = null;
+        await this.cleanup();
+        this.dispatch({ type: "ended", callId: ended.callId, reason: ended.reason });
+      } else if (this.pendingAccepted?.callId === ack.data.callId) {
         this.pendingAccepted = null;
         await this.startOutgoingPeerConnection();
       }
@@ -221,6 +227,10 @@ export class CallClient {
   };
 
   private readonly onEnded = (event: CallEndedEvent): void => {
+    if (this.stateValue.status === "outgoing" && this.stateValue.callId === null) {
+      this.pendingEnded = event;
+      return;
+    }
     if (!("callId" in this.stateValue) || this.stateValue.callId !== event.callId) return;
     void this.cleanup().then(() => this.dispatch({ type: "ended", callId: event.callId, reason: event.reason }));
   };
@@ -316,6 +326,7 @@ export class CallClient {
     this.remoteValue = null;
     this.pendingIce = [];
     this.pendingAccepted = null;
+    this.pendingEnded = null;
     this.notify();
   }
 
