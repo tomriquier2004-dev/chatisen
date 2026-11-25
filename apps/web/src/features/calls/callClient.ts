@@ -219,7 +219,12 @@ export class CallClient {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         this.updateCandidateType(event.candidate.candidate);
-        const payload: RtcIceCandidatePayload = { callId, to: peerId, candidate: event.candidate.toJSON() };
+        const payload: RtcIceCandidatePayload = { callId, to: peerId, candidate: {
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex,
+          usernameFragment: event.candidate.usernameFragment,
+        } };
         void this.emitAck<{ relayed: true }>("rtc:ice-candidate", payload).catch(() => undefined);
       }
     };
@@ -349,7 +354,8 @@ export class CallClient {
 
   private async emitAck<T>(event: string, payload: unknown): Promise<CallAck<T>> {
     try {
-      return (await this.socket.timeout(this.ackTimeoutMs).emitWithAck(event as never, payload as never)) as CallAck<T>;
+      const emitWithAck = this.socket.timeout(this.ackTimeoutMs).emitWithAck as unknown as (eventName: string, data: unknown) => Promise<unknown>;
+      return (await emitWithAck.call(this.socket.timeout(this.ackTimeoutMs), event, payload)) as CallAck<T>;
     } catch {
       throw new ApiError("NETWORK_ERROR", undefined);
     }
