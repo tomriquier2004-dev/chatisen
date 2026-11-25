@@ -48,8 +48,8 @@ export default defineConfig({
         RATE_LIMIT_ENABLED: "false",
         // Clé jetable, tirée à chaque lancement.
         JWT_SECRET: randomBytes(48).toString("base64"),
-        TURN_SHARED_SECRET: randomBytes(48).toString("base64"),
-        TURN_URLS: "stun:stun.l.google.com:19302",
+        TURN_SHARED_SECRET: process.env.TURN_SHARED_SECRET ?? randomBytes(48).toString("base64"),
+        TURN_URLS: process.env.TURN_URLS ?? "stun:stun.l.google.com:19302",
         CALL_RING_TIMEOUT_SECONDS: "5",
         CALL_DISCONNECT_GRACE_SECONDS: "3",
       },
