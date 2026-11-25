@@ -28,6 +28,7 @@ export const CallAckErrorCode = Type.Union([
   Type.Literal("VALIDATION_FAILED"),
   Type.Literal("UNAUTHENTICATED"),
   Type.Literal("FORBIDDEN"),
+  Type.Literal("CONVERSATION_FORBIDDEN"),
   Type.Literal("NOT_FOUND"),
   Type.Literal("RATE_LIMITED"),
   Type.Literal("INTERNAL_ERROR"),
