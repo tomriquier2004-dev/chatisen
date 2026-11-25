@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.3.0...v0.4.0) (2026-11-25)
+
+
+### Fonctionnalités
+
+* **appels:** add quality anomaly analysis PoC ([#110](https://github.com/tomriquier2004-dev/chatisen/issues/110)) ([9ae32b5](https://github.com/tomriquier2004-dev/chatisen/commit/9ae32b571ab5d0857bd0b408128f9f20de2a47ac))
+* **appels:** secure call quality sample ingestion ([#109](https://github.com/tomriquier2004-dev/chatisen/issues/109)) ([9312280](https://github.com/tomriquier2004-dev/chatisen/commit/9312280de2891dd250bdf1030c121104fa5ce19c))
+* **infra:** add Caddy entry point, ports test and VM runbook ([#106](https://github.com/tomriquier2004-dev/chatisen/issues/106)) ([b488544](https://github.com/tomriquier2004-dev/chatisen/commit/b4885446bce018acb2654d44505a4a8557b45bc2))
+* **web:** add a light/dark theme toggle that follows the system by default ([#104](https://github.com/tomriquier2004-dev/chatisen/issues/104)) ([100b03c](https://github.com/tomriquier2004-dev/chatisen/commit/100b03cef0f87f4d26dd91c31b2723bfc89dff2b))
+
+
+### Documentation
+
+* **appels:** add WebRTC and Socket.IO ADRs ([#108](https://github.com/tomriquier2004-dev/chatisen/issues/108)) ([f6306cc](https://github.com/tomriquier2004-dev/chatisen/commit/f6306cc285772991260e7c1cd91161bce7915ab2))
+* **infra:** record ports and TLS proofs, document IAP SSH restriction ([#113](https://github.com/tomriquier2004-dev/chatisen/issues/113)) ([c39b4e0](https://github.com/tomriquier2004-dev/chatisen/commit/c39b4e02dbba6546ad8eed0f9ad08677468b5608))
+
 ## [0.3.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.2.0...v0.3.0) (2026-11-23)
 
 
