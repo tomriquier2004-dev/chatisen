@@ -70,6 +70,12 @@ export type CallInviteAck = Static<typeof CallInviteAck>;
 export const CallIdPayload = Type.Object({ callId: Uuid }, { additionalProperties: false });
 export type CallIdPayload = Static<typeof CallIdPayload>;
 
+export const CallHangupPayload = Type.Object(
+  { callId: Uuid, reason: Type.Optional(Type.Union([Type.Literal("hangup"), Type.Literal("failed")])) },
+  { additionalProperties: false },
+);
+export type CallHangupPayload = Static<typeof CallHangupPayload>;
+
 export const CallIncomingEvent = Type.Object(
   { callId: Uuid, conversationId: Uuid, from: Uuid, media: CallMedia },
   { additionalProperties: false },
@@ -148,7 +154,7 @@ export interface CallClientToServerEvents {
   "call:invite": (payload: CallInvitePayload, ack: (result: CallAck<CallInviteAck>) => void) => void;
   "call:accept": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
   "call:reject": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
-  "call:hangup": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
+  "call:hangup": (payload: CallHangupPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
   "call:media-state": (payload: CallMediaStatePayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
   "rtc:offer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
   "rtc:answer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
