@@ -56,12 +56,47 @@ export interface MessagesTable {
   created_at: Generated<Timestamp>;
 }
 
+export type CallMedia = "audio" | "video";
+export type IceCandidateType = "host" | "srflx" | "relay";
+
+export interface CallsTable {
+  id: Generated<string>;
+  conversation_id: string;
+  media: CallMedia;
+  initiator_id: string;
+  started_at: Generated<Timestamp>;
+  ended_at: Timestamp | null;
+  end_reason: string | null;
+}
+
+export interface CallParticipantsTable {
+  call_id: string;
+  user_id: string;
+  joined_at: Generated<Timestamp>;
+  left_at: Timestamp | null;
+}
+
+export interface CallQualitySamplesTable {
+  id: Generated<number>;
+  call_id: string;
+  user_id: string;
+  ts: Generated<Timestamp>;
+  rtt_ms: number;
+  jitter_ms: number;
+  packet_loss_pct: number;
+  bitrate_kbps: number;
+  candidate_type: IceCandidateType;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
   conversations: ConversationsTable;
   conversation_members: ConversationMembersTable;
   messages: MessagesTable;
+  calls: CallsTable;
+  call_participants: CallParticipantsTable;
+  call_quality_samples: CallQualitySamplesTable;
 }
 
 export type User = Selectable<UsersTable>;
@@ -70,3 +105,6 @@ export type Session = Selectable<SessionsTable>;
 export type Conversation = Selectable<ConversationsTable>;
 export type ConversationMember = Selectable<ConversationMembersTable>;
 export type Message = Selectable<MessagesTable>;
+export type Call = Selectable<CallsTable>;
+export type CallParticipant = Selectable<CallParticipantsTable>;
+export type CallQualitySample = Selectable<CallQualitySamplesTable>;
