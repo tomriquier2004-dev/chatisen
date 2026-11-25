@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import { ERROR_CODES, ErrorResponse, HealthLiveResponse } from "./index";
+import { CallAcceptedEvent, CallAckErrorCode, CallEndReason, CallEndedEvent, CallIdPayload, CallIncomingEvent, CallInviteAck, CallInvitePayload, RtcDescriptionPayload, RtcIceCandidatePayload, TurnCredentialsResponse } from "./calls";
 
 describe("ErrorResponse", () => {
   it("accepte une erreur bien formée", () => {
@@ -37,10 +38,6 @@ describe("HealthLiveResponse", () => {
 
 
 describe("Call signaling contracts (issue #114)", () => {
-  const { CallAcceptedEvent, CallAckErrorCode, CallEndReason, CallEndedEvent, CallIdPayload,
-    CallIncomingEvent, CallInviteAck, CallInvitePayload, CallMedia, RtcDescriptionPayload,
-    RtcIceCandidatePayload, TurnCredentialsResponse } = await import("./calls");
-
   it("accepts a private-call invitation and rejects unknown fields or media types", () => {
     expect(Value.Check(CallInvitePayload, { conversationId: "123e4567-e89b-12d3-a456-426614174000", media: "audio" })).toBe(true);
     expect(Value.Check(CallInvitePayload, { conversationId: "123e4567-e89b-12d3-a456-426614174000", media: "screen" })).toBe(false);
