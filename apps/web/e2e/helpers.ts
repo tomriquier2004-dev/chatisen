@@ -44,8 +44,10 @@ export async function logout(page: Page): Promise<void> {
 }
 
 async function pickUser(page: Page, user: TestUser): Promise<void> {
-  await page.getByPlaceholder("Nom ou nom d'utilisateur (2 caractères min.)").fill(user.username);
-  await page.getByRole("button").filter({ hasText: user.displayName }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByPlaceholder("Nom ou nom d'utilisateur (2 caractères min.)").fill(user.username);
+  // La sidebar peut déjà contenir un bouton portant le même nom : scope le résultat à la modale.
+  await dialog.getByRole("button").filter({ hasText: user.displayName }).click();
 }
 
 export async function createPrivate(page: Page, other: TestUser): Promise<void> {
