@@ -102,7 +102,7 @@ export class CallClient {
   subscribe(listener: (state: CallState) => void): () => void {
     this.listeners.add(listener);
     listener(this.stateValue);
-    return () => this.listeners.delete(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   /** Récupère des identifiants TURN temporaires avant chaque appel puis envoie l'invitation. */
