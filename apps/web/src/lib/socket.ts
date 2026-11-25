@@ -33,7 +33,6 @@ export class Realtime {
   private readonly resumeListeners = new Set<() => void>();
   private state: ConnectionState = "disconnected";
   private everConnected = false;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly ackTimeoutMs: number;
 
   constructor(
@@ -45,10 +44,6 @@ export class Realtime {
       path: "/socket.io",
       autoConnect: false,
       transports: ["websocket"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 2_000,
       auth: (cb) => {
         void api.accessToken().then((token) => cb(token ? { token } : {}));
       },
@@ -58,7 +53,6 @@ export class Realtime {
     this.socket.on("connect", () => {
       const resumed = this.everConnected;
       this.everConnected = true;
-      this.clearReconnectTimer();
       this.setState("connected");
       if (resumed) {
         void this.catchUp();
@@ -68,13 +62,7 @@ export class Realtime {
     });
     this.socket.on("disconnect", (reason) => {
       // Fermeture voulue par le serveur (logout, session révoquée) : pas de reconnexion automatique.
-      if (reason === "io server disconnect" || reason === "io client disconnect") {
-        this.clearReconnectTimer();
-        this.setState("disconnected");
-      } else {
-        this.setState("reconnecting");
-        this.scheduleReconnect();
-      }
+      this.setState(reason === "io server disconnect" || reason === "io client disconnect" ? "disconnected" : "reconnecting");
     });
     this.socket.on("connect_error", (err) => {
       if (err.message === "UNAUTHENTICATED") {
@@ -84,7 +72,6 @@ export class Realtime {
         });
       } else {
         this.setState("reconnecting");
-        this.scheduleReconnect();
       }
     });
     this.socket.on("message:new", (m) => this.deliver(m));
@@ -96,7 +83,6 @@ export class Realtime {
   }
 
   disconnect(): void {
-    this.clearReconnectTimer();
     this.socket.disconnect();
   }
 
@@ -149,19 +135,6 @@ export class Realtime {
     } catch {
       return null;
     }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer || this.socket.connected || this.state === "disconnected") return;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      if (!this.socket.connected && this.state === "reconnecting") this.socket.connect();
-    }, 1_000);
-  }
-
-  private clearReconnectTimer(): void {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = null;
   }
 
   private deliver(m: Message): void {
