@@ -1,7 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Value } from "@sinclair/typebox/value";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Message, type Ack, type ConversationView } from "@chatisen/shared";
+import {
+  Message,
+  type Ack,
+  type ConversationView,
+  type CallAck,
+  type CallInviteAck,
+  type CallIncomingEvent,
+  type CallAcceptedEvent,
+  type CallEndedEvent,
+  type RtcDescriptionEvent,
+  type RtcIceCandidateEvent,
+} from "@chatisen/shared";
 import { loadConfig, type Config } from "../config";
 import { createTestDb, type TestDb } from "../test/db";
 import { registerUser, type RegisteredUser } from "../test/app";
