@@ -24,6 +24,9 @@ class QualityAnalysisTests(unittest.TestCase):
         self.assertEqual(result["models"]["fixed_threshold"]["recall"], 1.0)
         self.assertEqual(result["models"]["ewma"]["recall"], 0.5)
         self.assertEqual(result["candidate_types"]["relay"]["samples"], 2)
+        self.assertEqual(result["conditions"]["normal"]["median_rtt_ms"], 50)
+        self.assertEqual(result["conditions"]["degraded"]["median_rtt_ms"], 225)
+        self.assertEqual(result["conditions"]["degraded"]["relay_share"], 1.0)
 
     def test_ewma_state_is_isolated_per_call(self):
         path = self.write_csv([
