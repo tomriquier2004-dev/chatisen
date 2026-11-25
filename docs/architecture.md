@@ -685,7 +685,7 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 
 - **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
 - ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
-- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt. L'ADR du load balancer et de Terraform (0018, numéro provisoire) reste à rédiger.
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt. L'[ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) (load balancer et Terraform) est rédigé, statut « proposé ».
 
 #### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
 
@@ -808,4 +808,4 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
 | ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
-| ADR-0018 | Infrastructure as code (Terraform) et load balancer GCP | à rédiger (numéro provisoire) |
+| [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
