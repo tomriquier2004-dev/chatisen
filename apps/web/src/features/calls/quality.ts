@@ -77,6 +77,7 @@ export interface QualityCollectorOptions {
   setInterval?: typeof setInterval;
   clearInterval?: typeof clearInterval;
   now?: () => Date;
+  onSample?: (sample: CallQualitySampleInput) => void;
 }
 
 /** Collecte toutes les 5 s, envoie des lots bornés et ne bloque jamais l'appel en cas d'échec REST. */
@@ -90,6 +91,7 @@ export class CallQualityCollector {
   private readonly schedule: typeof setInterval;
   private readonly cancel: typeof clearInterval;
   private readonly now: () => Date;
+  private readonly onSample?: (sample: CallQualitySampleInput) => void;
 
   constructor(
     private readonly api: ApiClient,
@@ -102,6 +104,7 @@ export class CallQualityCollector {
     this.schedule = options.setInterval ?? setInterval;
     this.cancel = options.clearInterval ?? clearInterval;
     this.now = options.now ?? (() => new Date());
+    this.onSample = options.onSample;
   }
 
   start(): void {
@@ -123,7 +126,10 @@ export class CallQualityCollector {
     try {
       const extracted = extractCallQuality(await this.peer.getStats(), this.now(), this.baseline);
       this.baseline = extracted.nextBaseline;
-      if (extracted.sample) this.samples.push(extracted.sample);
+      if (extracted.sample) {
+        this.samples.push(extracted.sample);
+        this.onSample?.(extracted.sample);
+      }
       if (this.samples.length >= this.batchSize) await this.flush();
     } catch {
       // Une collecte getStats manquée ne doit jamais interrompre l'appel.
