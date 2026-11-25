@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createTestApp, registerUser, type RegisteredUser, type TestApp } from "../../test/app";
+import { createTestApp, type TestApp } from "../../test/app";
+import type { FastifyInstance } from "fastify";
 
 let t: TestApp;
 
@@ -12,13 +13,25 @@ afterAll(async () => {
   await t.close();
 });
 
-function as(user: RegisteredUser) {
+interface TestUser { user: { id: string }; accessToken: string }
+
+async function createUser(app: FastifyInstance, prefix: string): Promise<TestUser> {
+  const suffix = randomUUID().slice(0, 8);
+  const user = await t.testDb.db
+    .insertInto("users")
+    .values({ username: `${prefix}_${suffix}`, email: `${prefix}.${suffix}@example.test`, password_hash: "test", display_name: prefix })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  return { user, accessToken: await app.tokens.signAccessToken(user.id, randomUUID()) };
+}
+
+function as(user: TestUser) {
   const headers = { authorization: `Bearer ${user.accessToken}` };
   return (callId: string, payload: object) =>
     t.app.inject({ method: "POST", url: `/api/v1/calls/${callId}/quality`, headers, payload });
 }
 
-async function createCall(initiator: RegisteredUser, recipient: RegisteredUser, otherMember?: RegisteredUser) {
+async function createCall(initiator: TestUser, recipient: TestUser, otherMember?: TestUser) {
   const members = [initiator, recipient, ...(otherMember ? [otherMember] : [])];
   const conversation = await t.testDb.db
     .insertInto("conversations")
@@ -58,7 +71,7 @@ const sample = {
 
 describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   it("enregistre les mesures sous l'identité authentifiée", async () => {
-    const alice = await registerUser(t.app, "quality-alice");
+    const alice = await createUser(t.app, "quality-alice");
     const bob = await registerUser(t.app, "quality-bob");
     const callId = await createCall(alice, bob);
 
@@ -100,6 +113,19 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
     const callId = await createCall(alice, bob);
 
     expect((await as(outsider)(callId, { samples: [sample] })).statusCode).toBe(403);
+  });
+
+  it("refuse un participant qui a quitté l'appel", async () => {
+    const alice = await createUser(t.app, "quality-left");
+    const bob = await createUser(t.app, "quality-peer");
+    const callId = await createCall(alice, bob);
+    await t.testDb.db
+      .updateTable("call_participants")
+      .set({ left_at: new Date() })
+      .where("call_id", "=", callId)
+      .where("user_id", "=", alice.user.id)
+      .execute();
+    expect((await as(alice)(callId, { samples: [sample] })).statusCode).toBe(403);
   });
 
   it("n'accepte pas de userId fourni par le client", async () => {
