@@ -40,7 +40,7 @@ B. **Un sous-domaine par service** (`api.`, `turn.`, `grafana.`) — séparation
 2. **Un seul nom d'hôte** : `dc-ops.isen.fedyna.fr`. `/api/*` et `/socket.io/*` vont vers l'API (`api:3000`, réseau interne Docker) ; le reste est servi depuis le build statique du client. **Aucun sous-domaine.** La seule demande au prof est de faire pointer ce nom (enregistrement A, TTL 15 min) vers l'IP statique.
 3. **Caddy n'expose que 80 et 443 en TCP.** HTTP/3 est désactivé, car l'UDP 443 n'est pas ouvert. En-têtes de base : HSTS à 1 jour au départ, `nosniff`, `Referrer-Policy`. La politique CSP reste à définir par le propriétaire du client, hors de ce lot.
 4. **Grafana, Prometheus et Loki ne sont pas exposés à Internet.** Ils écoutent sur `127.0.0.1` ; l'accès se fait par tunnel SSH. La route `/grafana` prévue au § 8.1 de l'architecture est abandonnée.
-5. **coturn** : 3478 en UDP et TCP, plage de relais UDP **49152-49252** (alignée sur le pare-feu ; le § 8.1 indique 49152-49200). **Pas de TURN sur le 443.** Le TLS sur 5349 n'est pas retenu pour la première version : il n'apporterait un bénéfice que sur des réseaux restrictifs et exigerait de partager le certificat de Caddy avec coturn. Le port 5349 reste ouvert au pare-feu mais sans service ; il sera refermé si on ne l'utilise pas.
+5. **coturn** : 3478 en UDP et TCP, plage de relais UDP **49152-49252** (alignée sur le pare-feu ; le § 8.1 indique 49152-49200). **Pas de TURN sur le 443.** Le TLS sur 5349 n'est pas retenu pour la première version : il n'apporterait un bénéfice que sur des réseaux restrictifs et exigerait de partager le certificat de Caddy avec coturn. Le port 5349 reste ouvert au pare-feu mais sans service ; il sera refermé si on ne l'utilise pas. **Vue J1** : coturn tourne sur la même VM et la même IP que Caddy. **Vue cible** : une VM TURN séparée derrière le load balancer est envisagée (consigne du prof, à confirmer avec Tom : [`architecture.md`](../architecture.md) § 8.3) ; l'[ADR-0018](0018-terraform-et-load-balancer-gcp.md) consignera ce changement.
 6. **Caddy ne démarre avec le nom de domaine qu'une fois le DNS résolu vers la VM**, pour ne pas épuiser les limites de validation échouée de Let's Encrypt.
 7. **Test préalable sans application** : `infra/compose/compose.ports-test.yml` et `infra/caddy/Caddyfile.ports-test` servent à prouver l'ouverture et la fermeture des ports, ainsi que le chiffrement sur 443, avant tout déploiement ([`infra/README.md`](../../infra/README.md)).
 
@@ -51,7 +51,7 @@ B. **Un sous-domaine par service** (`api.`, `turn.`, `grafana.`) — séparation
 - **Même origine pour le client et l'API** : plus simple et plus sûr côté cookies, mais une faille XSS dans le client atteindrait l'API avec les mêmes privilèges de navigateur ; la CSP et l'échappement par défaut de Preact en sont la protection.
 - **Let's Encrypt** demande que le port 80 soit joignable et que la VM soit allumée pour émettre et renouveler le certificat. La durée de validité d'un certificat Let's Encrypt est de l'ordre de plusieurs semaines (à vérifier à l'émission) ; Caddy renouvelle seul et retente si le renouvellement tombe pendant l'arrêt nocturne.
 - **Adresse du client derrière le proxy** : sans configuration, l'API voit l'IP de Caddy, et la limitation de débit (issue #71) traiterait tous les utilisateurs comme un seul. `TRUST_PROXY` doit être activé dans la configuration de déploiement de l'API (à vérifier par le domaine messagerie).
-- **Documentation à aligner** : `architecture.md` § 6.4 (retrait du TLS 443), § 8.1 (route `/grafana`, plage 49252) et le diagramme en cours de rédaction par Theo.
+- **Documentation alignée** : `architecture.md` §§ 6.4, 8.1 et 8.3 ont été mis à jour (PR #126 et #130) : retrait du TLS 443, route `/grafana` abandonnée, plage 49152-49252, vues J1 et cible.
 - **À revoir** si la salle de démo bloque TURN, si le prof impose des sous-domaines, ou si plusieurs instances de l'API exigent un affinage de routage (sticky sessions, ADR-0011).
 
 ## À vérifier avant de passer à « accepté »
@@ -67,4 +67,4 @@ Preuves de la séance du 25/11/2026 : [`docs/reports/ports-tls-2026-11-25.md`](.
 - [x] Certificat valide obtenu pour ce nom (accepté sans `-k` par `curl`).
 - [ ] Émetteur du certificat relevé (Caddy peut utiliser Let's Encrypt ou ZeroSSL, l'énoncé « Let's Encrypt » n'est donc pas prouvé).
 - [ ] coturn déployé et TURN testé depuis le réseau de la salle de démo.
-- [ ] `architecture.md` mis à jour.
+- [x] `architecture.md` mis à jour (§§ 6.4, 8.1 et 8.3, PR #126 et #130).

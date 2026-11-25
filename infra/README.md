@@ -12,7 +12,7 @@ Mode d'emploi de l'hôte de déploiement et du contenu de `infra/`. Décisions :
 | Nom de domaine | `dc-ops.isen.fedyna.fr` (un seul nom, pas de sous-domaine) |
 | Étiquette réseau | `chatisen` (les règles de pare-feu applicatives ciblent cette étiquette) |
 
-**La VM est éteinte par défaut.** On l'allume pour travailler et on l'éteint ensuite : un calendrier d'instance l'arrête aussi chaque nuit à 00h00 (Paris). Éteinte, elle ne coûte que son disque et son IP.
+**La VM est éteinte par défaut.** On l'allume pour travailler et on l'éteint ensuite : un calendrier d'instance l'arrête aussi chaque nuit à 00h00 (Paris). Éteinte, elle ne coûte que son disque et son IP. Cette règle vaut pour la vue J1 : le load balancer de la vue cible, une fois créé, est facturé tant qu'il existe, VM éteintes ou non (voir [`architecture.md`](../docs/architecture.md) § 8.3 et l'[ADR-0018](../docs/adr/0018-terraform-et-load-balancer-gcp.md)).
 
 ## Obtenir l'accès (une seule fois)
 
@@ -68,7 +68,7 @@ Sur la VM, les commandes Docker de ce document s'écrivent avec `sudo` (`sudo do
 
 - **Lire le crédit restant** : console Google Cloud, Facturation, vue d'ensemble : la carte « Welcome credit » affiche le crédit restant et les jours restants. Une alerte de budget prévient par e-mail aux seuils de 25, 50, 75 et 90 % de 135 € ; elle ne coupe rien.
 - **Ne jamais cliquer sur « Mettre à niveau »** : le compte reste en essai gratuit, rien n'est facturé tant qu'on ne passe pas à un compte payant (indication de la console).
-- **Éteinte, la VM coûte encore** son disque et son IP statique, sur le crédit. L'arrêt économise le calcul seulement.
+- **Éteinte, la VM coûte encore** son disque et son IP statique, sur le crédit. L'arrêt économise le calcul seulement. Le load balancer de la vue cible, lui, est facturé tant qu'il existe (0,025 $ par heure d'après la page de tarifs de GCP, à confirmer dans le calculateur).
 - **Arrêt automatique de 00h00** : il a été configuré par Sha et reste à vérifier le premier soir (ADR-0012). Pour une séance qui dépasse minuit (mesures, répétition de démo), suspendre le calendrier d'instance dans la console avant la séance (Compute Engine, calendriers d'instance : l'intitulé exact est à vérifier), puis le réactiver. Après un arrêt automatique, rallumer la VM à la main.
 - Une VM éteinte ne fait ni sauvegarde, ni collecte de métriques, ni déploiement : l'allumer avant toute séance de mesure ou de déploiement.
 
