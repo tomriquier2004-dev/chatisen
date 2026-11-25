@@ -388,7 +388,7 @@ sequenceDiagram
 ```
 
 - **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; l'API génère `username = <expiration>:<userId>` et `credential = HMAC-SHA1(secret, username)`, avec une durée de vie courte. Aucun mot de passe TURN statique n'est exposé au client.
-- coturn est isolé sur une **VM dédiée** avec IP publique statique (proposition ADR-0017 en attente de validation infra / encadrant). Il écoute en **UDP/TCP 3478** et relaie sur **UDP 49152-49252**. Pas de TURN/TLS sur 443 (réservé à Caddy) ni sur 5349 pour le premier jalon ; un réseau qui filtre UDP peut donc empêcher le relais (risque R4).
+- coturn est isolé sur une **VM dédiée** avec IP publique statique (proposition ADR-0018 en attente de validation infra / encadrant). Il écoute en **UDP/TCP 3478** et relaie sur **UDP 49152-49252**. Pas de TURN/TLS sur 443 (réservé à Caddy) ni sur 5349 pour le premier jalon ; un réseau qui filtre UDP peut donc empêcher le relais (risque R4).
 - **Micro / caméra** (FR-11) : activation / désactivation via `track.enabled`, sans renégociation. **Partage d'écran** (FR-15) : `getDisplayMedia()` puis `RTCRtpSender.replaceTrack()` sur la piste vidéo, sans renégociation non plus.
 
 ---
@@ -445,12 +445,12 @@ flowchart TB
     GRAF --> LOKI
 ```
 
-- La VM applicative et la VM coturn sont deux hôtes distincts ; les stacks Compose sont démarrées séparément. `infra/coturn/compose.yml` fixe l'adresse privée du conteneur et configure la traduction IP publique/privée. Cette topologie est proposée dans l'ADR-0017 et doit être validée avant déploiement.
+- La VM applicative et la VM coturn sont deux hôtes distincts ; les stacks Compose sont démarrées séparément. `infra/coturn/compose.yml` fixe l'adresse privée du conteneur et configure la traduction IP publique/privée. Cette topologie est proposée dans l'ADR-0018 et doit être validée avant déploiement.
 - La stack de supervision est indépendante (`infra/observability/compose.yml`) et rejoint le réseau Docker privé `chatisen-observability` pour scruter l'API et coturn ; ses interfaces Prometheus/Grafana restent liées à `127.0.0.1`.
 - **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne. Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM (accès par tunnel SSH). La vue cible du § 8.3 déplace PostgreSQL chez Supabase, **à confirmer** avec le prof et Tom : elle contredit cette règle et l'ADR-0006.
 - **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
-- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0017, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
+- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0018, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
 
 ### 8.2 Chaîne CI/CD
 
@@ -559,7 +559,7 @@ flowchart LR
             COT["coturn<br/>external-ip = IP du load balancer"]
         end
     end
-    subgraph SUP["Supabase (UE) : à confirmer, ADR-0017"]
+    subgraph SUP["Supabase (UE) : à confirmer, ADR-0018"]
         PGS[("PostgreSQL<br/>TLS, mode session")]
     end
     OFF["Copie hors de l'hôte<br/>bucket à choisir (#42)"]
@@ -594,7 +594,7 @@ flowchart LR
 
 | Sujet | Pour (décision de THEO / consigne du prof) | Contre (review de Tom) | Dans les vues |
 | --- | --- | --- | --- |
-| **Base sur Supabase** (ADR-0017 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
+| **Base sur Supabase** (ADR-0018 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
 | **VM TURN séparée** | Le prof : coturn consomme beaucoup et peut geler Caddy ; meilleure scalabilité (la bande passante TURN est le coût qui monte) | L'ADR-0016 met coturn sur la même VM et la même IP ; une VM de plus à créer, durcir et arrêter chaque nuit avant J2 | J1 : coturn sur la VM. Cible : VM TURN |
 
 Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
@@ -636,7 +636,7 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F11 | les deux | Caddy | API (`api:3000`) | 3000/tcp | HTTP, réseau Docker | **aucun** | proposé | `Test-NetConnection <IP> -Port 3000` : bloqué depuis Internet | ADR-0016, `infra/caddy/Caddyfile` |
 | F12 | les deux | API | Redis | 6379/tcp | RESP, réseau Docker | **aucun** | existant (code), déploiement proposé | port non publié (`docker compose ps`) | ADR-0006, `apps/api/src/config.ts` |
 | F13 | J1 | API | PostgreSQL (Compose) | 5432/tcp | PostgreSQL, réseau Docker | **aucun** | **à confirmer** (voir plus haut) | port non publié (`docker compose ps`) | ADR-0006 |
-| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0017 (brouillon) |
+| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0018 (brouillon) |
 | F14 | les deux | postgres-backup | PostgreSQL (J1 : local ; cible : Supabase) | 5432/tcp | `pg_dump` | fichier chiffré age (+ TLS en cible) | existant (script) | `infra/backup/restore-test.sh` | #9, #31, `infra/backup/` |
 | F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
 | F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
@@ -672,7 +672,7 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 
 - **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
 - ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
-- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt.
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0018 (base sur Supabase) n'existe pas encore dans le dépôt.
 
 #### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
 
@@ -792,4 +792,4 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0014](adr/0014-release-please.md) | Versionnement et releases avec release-please | proposé, rédigé |
 | ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
-| ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
+| ADR-0018 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
