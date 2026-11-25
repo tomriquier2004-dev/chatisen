@@ -597,7 +597,7 @@ flowchart LR
 
 Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
 
-**Load balancer retenu, et ce qu'il coûte.** Tarifs en USD relevés le 25 novembre 2026 sur [cloud.google.com/vpc/network-pricing](https://cloud.google.com/vpc/network-pricing) ; le crédit de l'équipe est en euros. Le tableau lu pour les règles de transfert régionales est celui de l'Iowa : **le tarif d'`europe-west1` n'a pas été vérifié**. Durée prise : 16 jours, soit 384 h, jusqu'au 11 décembre.
+**Load balancer retenu, et ce qu'il coûte.** Tarifs en USD relevés le 25 novembre 2026 sur [cloud.google.com/vpc/network-pricing](https://cloud.google.com/vpc/network-pricing) ; le crédit de l'équipe est en euros. Le tableau des règles de transfert régionales est précédé d'une liste de régions qui inclut Belgium (`europe-west1`) : d'après la page, ces tarifs s'y appliquent (relecture dans un navigateur le 25 novembre 2026). La page ne propose ni abonnement mensuel ni forfait au gigaoctet : le tarif horaire de la règle et le tarif par Gio **s'additionnent**, et c'est la durée d'existence du load balancer qui fait le coût. Durée prise : 16 jours, soit 384 h, jusqu'au 11 décembre.
 
 | Poste | Tarif lu | Sur 16 jours, au plus |
 | --- | --- | --- |
