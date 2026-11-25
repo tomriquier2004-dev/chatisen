@@ -390,7 +390,7 @@ sequenceDiagram
 ```
 
 - **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; `GET /api/v1/turn/credentials` est authentifiée et limitée à 10 requêtes/minute/utilisateur. L'API génère `username = <expiration>:<userId>` et `credential = base64(HMAC-SHA1(secret, username))`. La durée de vie est configurable (`TURN_CREDENTIAL_TTL_SECONDS`, 3 600 s par défaut, bornée entre 60 et 86 400 s). `TURN_SHARED_SECRET` et `TURN_URLS` viennent de la configuration ; sur un hôte exposé, le démarrage est refusé si le secret manque ou ressemble à une valeur de développement. Le secret partagé n'est jamais renvoyé au client ni journalisé.
-- coturn est configuré pour écouter en **UDP 3478, TCP 3478 et TLS 443/5349** : sur un réseau d'école ou d'entreprise qui filtre l'UDP, TURN sur TLS 443 reste la dernière option qui passe (risque R4).
+- coturn est isolé sur une **VM dédiée** avec IP publique statique (proposition ADR-0017 en attente de validation infra / encadrant). Il écoute en **UDP/TCP 3478** et relaie sur **UDP 49152-49252**. Pas de TURN/TLS sur 443 (réservé à Caddy) ni sur 5349 pour le premier jalon ; un réseau qui filtre UDP peut donc empêcher le relais (risque R4).
 - **Micro / caméra** (FR-11) : activation / désactivation via `track.enabled`, sans renégociation. **Partage d'écran** (FR-15) : `getDisplayMedia()` puis `RTCRtpSender.replaceTrack()` sur la piste vidéo, sans renégociation non plus.
 
 ---
@@ -414,10 +414,9 @@ Proposition : **mesh limité à 3-4 participants**, avec une limite **mesurée**
 
 ```mermaid
 flowchart TB
-    subgraph Host["Hôte (VM)"]
+    subgraph AppHost["VM applicative"]
         subgraph Public["Ports publics"]
             CADDY["caddy<br/>:443 / :80"]
-            COTURN["coturn<br/>3478 UDP/TCP, 5349 TLS<br/>+ plage relais UDP 49152-49200"]
         end
         subgraph Internal["Réseau interne Docker"]
             API["api (N instances)<br/>:3000"]
@@ -430,6 +429,9 @@ flowchart TB
             GRAF["grafana"]
             EXP["exporters<br/>postgres, redis, cAdvisor"]
         end
+    end
+    subgraph TurnHost["VM coturn dédiée (IP statique)"]
+        COTURN["coturn<br/>3478 UDP/TCP<br/>49152-49252 UDP"]
     end
     CADDY --> API
     CADDY -- "/grafana (auth)" --> GRAF
@@ -445,12 +447,12 @@ flowchart TB
     GRAF --> LOKI
 ```
 
-- **Un seul `docker compose up`** démarre l'environnement complet ; les mêmes images servent en dev et en déploiement (NFR-07).
-- coturn tourne de préférence en `network_mode: host` : le NAT de Docker sur une large plage UDP dégrade les performances et complique la configuration.
+- La VM applicative et la VM coturn sont deux hôtes distincts ; les stacks Compose sont démarrées séparément. `infra/coturn/compose.yml` fixe l'adresse privée du conteneur et configure la traduction IP publique/privée. Cette topologie est proposée dans l'ADR-0017 et doit être validée avant déploiement.
+- La stack de supervision est indépendante (`infra/observability/compose.yml`) et rejoint le réseau Docker privé `chatisen-observability` pour scruter l'API et coturn ; ses interfaces Prometheus/Grafana restent liées à `127.0.0.1`.
 - **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne.
 - **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
-- **Hébergement** : non défini (question 4 dans [`prof-qa.md`](prof-qa.md)). L'architecture ne suppose qu'une VM avec Docker et une IP publique (nécessaire pour TURN). Kubernetes (k3s) est une évolution possible si la scalabilité doit être démontrée au-delà de Compose — ADR « Compose vs Kubernetes ».
+- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0017, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste hors périmètre.
 
 ### 8.2 Chaîne CI/CD
 
