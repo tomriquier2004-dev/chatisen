@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { Socket } from "socket.io";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   CallIdPayload,
   CallInvitePayload,
@@ -15,7 +17,7 @@ import type { Db } from "../db";
 import { AppError, forbidden, notFound } from "../errors";
 import { requireMember } from "../modules/conversations/service";
 import type { RateLimiter } from "../plugins/rate-limit";
-import { conversationRoom, userRoom } from "./events";
+import { userRoom } from "./events";
 import type { IoServer, SocketData } from "./index";
 
 type CallSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -78,11 +80,11 @@ export class CallSignaling {
       if (limiter?.enabled) {
         const result = await limiter.limiter.hit(`${name}:${socket.data.userId}`, limit, windowMs);
         if (!result.allowed) {
-          ack?.({ ok: false, error: { code: "RATE_LIMITED", message: "Trop d'événements d'appel, réessayez plus tard", requestId: crypto.randomUUID() } });
+          ack?.({ ok: false, error: { code: "RATE_LIMITED", message: "Trop d'événements d'appel, réessayez plus tard", requestId: randomUUID() } });
           return;
         }
       }
-      run(payload, ack);
+      await run(payload, ack);
     };
   }
 
@@ -91,10 +93,9 @@ export class CallSignaling {
     schema: S,
     run: (payload: P) => Promise<R>,
   ) {
-    const { TypeCompiler } = requireTypeCompiler();
     const check = TypeCompiler.Compile(schema);
     return async (payload: unknown, ack?: (result: CallAck<R>) => void) => {
-      const requestId = crypto.randomUUID();
+      const requestId = randomUUID();
       const fail = (code: import("@chatisen/shared").ErrorCode, message: string) =>
         ack?.({ ok: false, error: { code, message, requestId } });
       if (typeof ack !== "function") return;
@@ -168,7 +169,7 @@ export class CallSignaling {
   private async accept(userId: string, callId: string): Promise<{ callId: string }> {
     const result = await this.db.transaction().execute(async (trx) => {
       const call = await trx.selectFrom("calls").selectAll().where("id", "=", callId).forUpdate().executeTakeFirst();
-      if (!call) throw notFound("Appel introuvable", "CALL_NOT_FOUND");
+      if (!call) throw new AppError(404, "CALL_NOT_FOUND", "Appel introuvable");
       if (call.ended_at) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
       if (call.initiator_id === userId) throw forbidden("L'appelant ne peut pas accepter son propre appel");
       const member = await trx.selectFrom("conversation_members").select("user_id")
@@ -182,7 +183,7 @@ export class CallSignaling {
       }
       return { conversationId: call.conversation_id, initiatorId: call.initiator_id };
     });
-    this.emitToConversation(result.conversationId, "call:accepted", { callId, userId });
+    await this.emitToConversation(result.conversationId, "call:accepted", { callId, userId });
     return { callId };
   }
 
@@ -230,7 +231,7 @@ export class CallSignaling {
 
   private async getCall(callId: string) {
     const call = await this.db.selectFrom("calls").selectAll().where("id", "=", callId).executeTakeFirst();
-    if (!call) throw notFound("Appel introuvable", "CALL_NOT_FOUND");
+    if (!call) throw new AppError(404, "CALL_NOT_FOUND", "Appel introuvable");
     return call;
   }
 
@@ -288,17 +289,20 @@ export class CallSignaling {
     const members = await this.db.selectFrom("conversation_members").select("user_id")
       .where("conversation_id", "=", ended).execute();
     this.io.to(members.map((m) => userRoom(m.user_id))).emit("call:ended", { callId, reason });
-    this.io.to(conversationRoom(ended)).emit("call:ended", { callId, reason });
     const timer = this.ringTimers.get(callId);
     if (timer) clearTimeout(timer);
     this.ringTimers.delete(callId);
     return true;
   }
 
-  private emitToConversation<T extends "call:accepted">(conversationId: string, event: T, payload: Parameters<IoServer["emit"]>[1]): void {
-    void conversationId;
-    void event;
-    void payload;
+  private async emitToConversation(
+    conversationId: string,
+    event: "call:accepted",
+    payload: { callId: string; userId: string },
+  ): Promise<void> {
+    const members = await this.db.selectFrom("conversation_members").select("user_id")
+      .where("conversation_id", "=", conversationId).execute();
+    this.io.to(members.map((member) => userRoom(member.user_id))).emit(event, payload);
   }
 }
 
@@ -322,11 +326,5 @@ export async function endCallsForRemovedMember(db: Db, io: IoServer, conversatio
       .where("conversation_id", "=", conversationId).execute();
     const recipients = [...new Set([...members.map((m) => m.user_id), userId])];
     io.to(recipients.map(userRoom)).emit("call:ended", { callId: call.id, reason: "removed" });
-    io.to(conversationRoom(conversationId)).emit("call:ended", { callId: call.id, reason: "removed" });
   }
-}
-
-// Avoid a runtime dependency cycle in type-only modules while keeping compiler construction local.
-function requireTypeCompiler() {
-  return { TypeCompiler: (globalThis as never) as never };
 }
