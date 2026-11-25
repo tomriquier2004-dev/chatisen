@@ -541,7 +541,7 @@ flowchart LR
         IP["IP statique chatisen-ip"]
         LB["Load balancer réseau (retenu)<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
         IAP["IAP 35.235.240.0/20<br/>SSH et déploiement"]
-        NAT["Cloud NAT<br/>sortie des VM (F18)"]
+        NAT["Cloud NAT ou IP externes<br/>sortie des VM (F18, à trancher)"]
         FW["Pare-feu VPC<br/>chatisen-web, chatisen-turn, chatisen-ssh-iap<br/>default-allow-ssh supprimée"]
         subgraph VW["VM web"]
             SSHD["sshd :22<br/>OS Login"]
@@ -597,7 +597,22 @@ flowchart LR
 
 Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
 
-**Load balancer retenu** : l'équipe retient le load balancer réseau de GCP pour la vue cible. Il est facturé à l'heure, y compris quand les VM sont éteintes, comme Cloud NAT (à vérifier dans le calculateur de prix GCP) : son coût est à suivre dans l'alerte de budget, et la règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé. Un load balancer réseau de type passthrough transmet TCP et UDP sans terminer le TLS : Caddy continue de gérer les certificats. Si le coût devenait un problème, l'alternative est une IP statique propre à la VM TURN et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof), sans Cloud NAT si les deux VM gardent une IP externe.
+**Load balancer retenu, et ce qu'il coûte.** Tarifs en USD relevés le 25 novembre 2026 sur [cloud.google.com/vpc/network-pricing](https://cloud.google.com/vpc/network-pricing) ; le crédit de l'équipe est en euros. Le tableau lu pour les règles de transfert régionales est celui de l'Iowa : **le tarif d'`europe-west1` n'a pas été vérifié**. Durée prise : 16 jours, soit 384 h, jusqu'au 11 décembre.
+
+| Poste | Tarif lu | Sur 16 jours, au plus |
+| --- | --- | --- |
+| Règle de transfert du load balancer (les 5 premières ; une suffit en général) | 0,025 $/h, soit 0,60 $/jour | environ 9,6 $ |
+| Données traitées par le load balancer (régional) | 0,008 $/Gio en entrée et autant en sortie | négligeable au volume de nos tests |
+| IP statique associée à une règle de transfert | sans frais | 0 |
+| IP externe sur une VM standard | 0,005 $/h par IP | environ 1,9 $ par VM |
+| Cloud NAT | 0,0014 $/h par VM (jusqu'à 32) + 0,005 $/h par IP de la passerelle + 0,045 $/Gio traité | environ 3 $ pour 2 VM, plus les données |
+
+- **Totaux de la vue cible** : load balancer et IP externes sur les deux VM, environ 13 $ ; load balancer et Cloud NAT, environ 13 $ ; sans load balancer, une IP externe par VM, environ 4 $. Ces montants sont faibles devant le crédit de 269 € : le coût ne doit pas décider.
+- **Ils courent aussi VM éteintes** : la règle de transfert est facturée tant qu'elle existe, comme l'IP de la passerelle NAT. La règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé.
+- **Quel type** : le tarif de la règle de transfert est le même pour les load balancers réseau (passthrough et proxy) et d'application externes ; le choix est donc technique. Seul le load balancer réseau **passthrough externe** transmet à la fois le TCP (web) et l'UDP (TURN) sur une même IP ; un load balancer d'application ne traite que le HTTP(S) et un load balancer réseau proxy que le TCP (connaissance générale de GCP, pas lue sur la page de tarifs : à confirmer dans la documentation). Les load balancers internes sont à écarter : le load balancer d'application interne facture au minimum trois instances de proxy à 0,025 $/h chacune, même sans trafic.
+- **Hypothèse à mesurer avant de s'y engager** : coturn derrière un load balancer passthrough. Les paquets relayés que coturn envoie à l'autre pair doivent porter l'adresse du load balancer comme source ; avec Cloud NAT, ils porteraient celle de la passerelle et pourraient être ignorés par le pair. À vérifier avec un appel relayé.
+- **Recommandation pour F18** : des IP externes sur les VM plutôt que Cloud NAT (coût comparable, une pièce de moins, pas de question d'adresse source pour coturn). Les règles de pare-feu continuent de limiter les entrées.
+- **Alternative sans load balancer**, à garder si le test coturn échoue : une IP statique propre à la VM TURN et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof).
 
 #### Frontières de confiance
 
@@ -639,7 +654,7 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
 | F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
 | F17 | les deux | API | coturn | — | aucun flux : secret HMAC partagé | — | proposé | identifiants refusés après expiration | architecture § 6.4 |
-| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) | `curl https://…` depuis la VM | — |
+| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) ; IP externes recommandées, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
 | F19 | les deux | CI (GitHub Actions) | Registre d'images | 443/tcp | HTTPS (push d'images API et client) | TLS | à trancher : registre non choisi | image taguée par SHA dans le registre | ADR-0012, #12, `ci.yml` (commentaire « push registry ») |
 | F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
 | F21 | cible (manquant en J1) | postgres-backup | stockage hors de l'hôte (bucket à choisir) | 443/tcp | HTTPS | TLS + fichier chiffré age | **manquant** | restauration depuis la copie distante | #42 |
