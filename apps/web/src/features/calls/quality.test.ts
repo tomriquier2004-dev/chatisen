@@ -40,7 +40,7 @@ describe("extractCallQuality", () => {
 
 describe("CallQualityCollector", () => {
   it("envoie un lot à la limite configurée et vide le dernier lot au raccrochage", async () => {
-    let tick: (() => void) | undefined;
+    let tick: (() => Promise<void>) | undefined;
     const api = { request: vi.fn(async () => ({ accepted: 1 })) };
     const peer = { getStats: vi.fn(async () => report()) } as unknown as RTCPeerConnection;
     const collector = new CallQualityCollector(
@@ -50,7 +50,7 @@ describe("CallQualityCollector", () => {
       {
         batchSize: 2,
         setInterval: ((callback: TimerHandler) => {
-          tick = callback as () => void;
+          tick = callback as () => Promise<void>;
           return 1 as unknown as ReturnType<typeof setInterval>;
         }) as unknown as typeof setInterval,
         clearInterval: vi.fn() as unknown as typeof clearInterval,
