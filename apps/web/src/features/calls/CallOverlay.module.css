@@ -106,6 +106,19 @@
   background: var(--color-bg-subtle);
 }
 
+.localCameraOff {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font: var(--text-caption);
+}
+
 .actions {
   display: flex;
   justify-content: center;
