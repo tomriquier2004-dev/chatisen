@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { Socket } from "socket.io";
+import type { TSchema } from "@sinclair/typebox";
 import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   CallIdPayload,
@@ -10,6 +11,10 @@ import {
   RtcIceCandidatePayload,
   type CallAck,
   type CallInviteAck,
+  type CallInvitePayload,
+  type RtcDescriptionPayload,
+  type RtcIceCandidatePayload,
+  type ErrorCode,
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from "@chatisen/shared";
@@ -88,7 +93,7 @@ export class CallSignaling {
     };
   }
 
-  private handler<S extends import("@sinclair/typebox").TSchema, P, R>(
+  private handler<S extends TSchema, P, R>(
     socket: CallSocket,
     schema: S,
     run: (payload: P) => Promise<R>,
@@ -96,7 +101,7 @@ export class CallSignaling {
     const check = TypeCompiler.Compile(schema);
     return async (payload: unknown, ack?: (result: CallAck<R>) => void) => {
       const requestId = randomUUID();
-      const fail = (code: import("@chatisen/shared").ErrorCode, message: string) =>
+      const fail = (code: ErrorCode, message: string) =>
         ack?.({ ok: false, error: { code, message, requestId } });
       if (typeof ack !== "function") return;
       if (!check.Check(payload)) {
@@ -113,7 +118,7 @@ export class CallSignaling {
     };
   }
 
-  private async invite(userId: string, payload: import("@chatisen/shared").CallInvitePayload): Promise<CallInviteAck> {
+  private async invite(userId: string, payload: CallInvitePayload): Promise<CallInviteAck> {
     await requireMember(this.db, payload.conversationId, userId);
     const conversation = await this.db
       .selectFrom("conversations")
@@ -204,13 +209,13 @@ export class CallSignaling {
     return { callId };
   }
 
-  private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: import("@chatisen/shared").RtcDescriptionPayload): Promise<{ relayed: true }> {
+  private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: RtcDescriptionPayload): Promise<{ relayed: true }> {
     const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
     this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
     return { relayed: true };
   }
 
-  private async relayCandidate(userId: string, payload: import("@chatisen/shared").RtcIceCandidatePayload): Promise<{ relayed: true }> {
+  private async relayCandidate(userId: string, payload: RtcIceCandidatePayload): Promise<{ relayed: true }> {
     const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
     this.io.to(userRoom(target)).emit("rtc:ice-candidate", { callId: payload.callId, from: userId, candidate: payload.candidate });
     return { relayed: true };
@@ -243,7 +248,6 @@ export class CallSignaling {
 
   private async expireIfRinging(callId: string): Promise<void> {
     this.ringTimers.delete(callId);
-    const participants = await this.db.selectFrom("call_participants").select("user_id").where("call_id", "=", callId).execute();
     await this.endCallIfRinging(callId);
   }
 
