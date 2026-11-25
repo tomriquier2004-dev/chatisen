@@ -71,7 +71,7 @@ export const CallIdPayload = Type.Object({ callId: Uuid }, { additionalPropertie
 export type CallIdPayload = Static<typeof CallIdPayload>;
 
 export const CallHangupPayload = Type.Object(
-  { callId: Uuid, reason: Type.Optional(Type.Union([Type.Literal("hangup"), Type.Literal("failed")])) },
+  { callId: Uuid, reason: Type.Optional(Type.Union([Type.Literal("hangup"), Type.Literal("failed")])), negotiationFailed: Type.Optional(Type.Boolean()) },
   { additionalProperties: false },
 );
 export type CallHangupPayload = Static<typeof CallHangupPayload>;
