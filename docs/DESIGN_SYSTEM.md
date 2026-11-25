@@ -18,7 +18,7 @@
 
 ## 2. Couleurs & Tokens
 
-Le thème **Clair** est actif par défaut. L'architecture des variables CSS prévoit les tokens pour un thème **Sombre** ultérieur sans modification des composants.
+Deux thèmes, **Clair** et **Sombre**, partagent les mêmes composants : seules les variables CSS changent (§ 2.4). Par défaut, l'interface suit le réglage du système (`prefers-color-scheme`) ; l'utilisateur peut forcer l'un ou l'autre (§ 2.5).
 
 ### 2.1 Palette Principale & Surfaces
 
@@ -57,7 +57,7 @@ Utilisée exclusivement pour les statuts de présence, la qualité d'appel, l'é
 | `--color-status-info` | Bleu Ardoise | `#2563EB` | Étiquettes techniques, liens Grafana |
 | `--color-status-info-bg` | Fond info doux | `#DBEAFE` | Étiquettes techniques |
 
-### 2.4 Architecture Thème Sombre (Préparée)
+### 2.4 Thème Sombre
 
 ```css
 [data-theme="dark"] {
@@ -71,6 +71,15 @@ Utilisée exclusivement pour les statuts de présence, la qualité d'appel, l'é
   --color-brand-soft: rgba(244, 200, 66, 0.14);
 }
 ```
+
+Le jaune de marque, les couleurs sémantiques et `--color-border-strong` gardent leur valeur claire.
+
+### 2.5 Choix du thème
+
+* **Trois options** : `Système` (par défaut), `Clair`, `Sombre`, présentées en sélecteur segmenté (groupe de boutons radio, texte `Caption`, option active sur fond `--color-brand-soft`).
+* **Emplacement** : pied de la sidebar dans l'espace connecté ; coin supérieur droit sur l'écran de connexion.
+* **Mémorisation** : un thème forcé est enregistré dans le navigateur (`localStorage`, clé `chatisen.theme`) ; revenir à `Système` efface ce choix. Sans stockage disponible (navigation privée), le choix vaut pour la session.
+* **Application** : le thème actif est posé sur `<html data-theme>` avant le premier rendu (`apps/web/src/lib/theme.ts`).
 
 ---
 

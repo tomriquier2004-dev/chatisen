@@ -5,6 +5,13 @@
   padding: var(--space-8);
 }
 
+/* Choix du thème en haut à droite, hors de la carte de connexion. */
+.theme {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+}
+
 .card {
   width: min(100%, 420px);
   padding: var(--space-8);

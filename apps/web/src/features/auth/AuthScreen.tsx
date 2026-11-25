@@ -4,6 +4,7 @@ import { LoginRequest, RegisterRequest } from "@chatisen/shared";
 import { api } from "../../app/services";
 import { ApiError } from "../../lib/errors";
 import { fieldErrors } from "../../lib/validation";
+import { ThemeToggle } from "../theme/ThemeToggle";
 import styles from "./Auth.module.css";
 
 type Mode = "login" | "register";
@@ -27,6 +28,7 @@ export function AuthScreen() {
 
   return (
     <main class={styles.page}>
+      <ThemeToggle class={styles.theme} />
       <section class={styles.card} aria-labelledby="auth-title">
         <div class={styles.brand}>
           <span class={styles.logo} aria-hidden="true">
