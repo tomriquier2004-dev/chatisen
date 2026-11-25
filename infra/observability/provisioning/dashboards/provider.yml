@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: ChatISEN
+    orgId: 1
+    folder: ChatISEN
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards
