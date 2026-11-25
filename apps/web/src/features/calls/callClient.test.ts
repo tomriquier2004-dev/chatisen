@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CallAcceptedEvent, CallIncomingEvent, RtcDescriptionEvent, RtcIceCandidateEvent } from "@chatisen/shared";
 import type { ApiClient } from "../../lib/api";
 import type { ChatSocket } from "../../lib/socket";
@@ -91,7 +91,7 @@ describe("CallClient WebRTC", () => {
     expect(h.client.state.status).toBe("connecting");
 
     h.peer.connectionState = "connected";
-    h.peer.onconnectionstatechange?.();
+    h.peer.onconnectionstatechange?.(new Event("connectionstatechange"));
     expect(h.client.state.status).toBe("connected");
     await h.client.hangup();
     expect(h.track.stop).toHaveBeenCalledOnce();
