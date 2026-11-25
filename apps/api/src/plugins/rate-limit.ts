@@ -115,6 +115,8 @@ export const RATE_RULES = {
   registerPerIp: { name: "register-ip", limit: 10, windowMs: 60 * MINUTE, key: (r) => r.ip },
   refreshPerIp: { name: "refresh-ip", limit: 60, windowMs: MINUTE, key: (r) => r.ip },
   userSearchPerUser: { name: "user-search", limit: 30, windowMs: MINUTE, key: (r) => r.auth?.userId },
+  // Collecte getStats : 30 lots/minute/utilisateur, seuil à calibrer par les mesures (issue #13).
+  callQualityPerUser: { name: "call-quality", limit: 30, windowMs: MINUTE, key: (r) => r.auth?.userId },
 } satisfies Record<string, RateRule>;
 
 /**
