@@ -36,21 +36,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U chatisen -d chatisen"
           --health-interval 2s --health-timeout 3s --health-retries 30
-      coturn:
-        image: coturn/coturn:4.6.2
-        ports:
-          - 3478:3478/udp
-          - 3478:3478/tcp
-          - 49160-49200:49160-49200/udp
-        options: >-
-          --health-cmd "turnutils_stunclient 127.0.0.1"
-          --health-interval 2s --health-timeout 3s --health-retries 30
-        command: >-
-          -n --log-file=stdout --fingerprint --use-auth-secret
-          --static-auth-secret=chatisen-e2e-shared-secret-0123456789abcdef
-          --realm=chatisen.test --listening-port=3478 --listening-ip=0.0.0.0
-          --relay-ip=0.0.0.0 --external-ip=127.0.0.1
-          --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli
       redis:
         image: redis:7-bookworm
         ports:
@@ -76,6 +61,23 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Navigateur Chromium
         run: pnpm --filter @chatisen/web exec playwright install --with-deps chromium
+      - name: Démarrer coturn pour les appels WebRTC
+        run: |
+          docker run -d --name chatisen-coturn \
+            -p 3478:3478/udp -p 3478:3478/tcp \
+            -p 49160-49200:49160-49200/udp \
+            coturn/coturn:4.6.2 \
+            -n --log-file=stdout --fingerprint --use-auth-secret \
+            --static-auth-secret=chatisen-e2e-shared-secret-0123456789abcdef \
+            --realm=chatisen.test --listening-port=3478 --listening-ip=0.0.0.0 \
+            --relay-ip=0.0.0.0 --external-ip=127.0.0.1 \
+            --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli
+          for i in $(seq 1 15); do
+            if docker logs chatisen-coturn 2>&1 | grep -q "Listener address"; then exit 0; fi
+            sleep 1
+          done
+          docker logs chatisen-coturn
+          exit 1
       - name: Tests e2e
         run: pnpm --filter @chatisen/web test:e2e
       - name: Captures clair / sombre de l'interface d'appel
