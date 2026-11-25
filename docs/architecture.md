@@ -723,13 +723,13 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 
 | Source | Métriques clés | Usage |
 | --- | --- | --- |
-| API (`prom-client`) | latence HTTP par route (histogramme), taux d'erreurs, connexions Socket.IO actives, messages/s, **latence d'ack `message:send`**, durée des requêtes SQL | SLO messagerie, tests de charge |
+| API (`GET /metrics`, exposition Prometheus) | appels démarrés, acceptés, terminés par raison, échecs de négociation ICE, histogramme de durée ; échantillons qualité et nombre d'appels distincts par dernier candidat ICE | SLO appels, taux TURN, détection des échecs |
 | Clients (`getStats`) | RTT, jitter, perte de paquets, débit, type de candidat ICE | Qualité de communication, Data / IA |
-| coturn (exporter Prometheus intégré) | allocations actives, octets relayés | Part des appels relayés, coût TURN |
-| Postgres / Redis / conteneurs | connexions, latence, CPU, mémoire | Goulots d'étranglement |
-| Logs (pino → Loki) | JSON avec `requestId`, `userId`, `socketId` | Investigation d'incident |
+| coturn (exporter Prometheus intégré) | disponibilité, allocations actives, octets relayés | Part des appels relayés, coût TURN |
+| Postgres / Redis / conteneurs | connexions, latence, CPU, mémoire (collecteurs à raccorder) | Goulots d'étranglement |
+| Logs (pino) | JSON avec `requestId`, `userId`, `socketId` ; centralisation Loki à raccorder | Investigation d'incident |
 
-Alertes de départ (à calibrer après les premiers tests de charge) : taux d'erreurs 5xx, p95 de la latence d'ack au-dessus du seuil, `/health/ready` en échec, perte de paquets moyenne élevée sur les appels en cours.
+Alertes provisionnées : `CoturnUnavailable` (cible coturn injoignable) et `CallNegotiationFailureRateHigh` (plus de 20 % d'échecs ICE sur 5 min). Les compteurs d'appels API sont process-local et se réinitialisent au redémarrage ; les mesures de qualité et la classification par candidat sont calculées depuis PostgreSQL. Les seuils et la notification opérationnelle restent à valider sur la VM de supervision.
 
 ### 10.2 Comportement en cas de panne (NFR-03)
 
