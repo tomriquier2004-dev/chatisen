@@ -108,8 +108,9 @@ export async function cuttableRealtime(page: Page) {
       blocked = true;
       await Promise.all(open.splice(0).map((c) => c.close().catch(() => undefined)));
     },
-    restore() {
+    async restore() {
       blocked = false;
+      await page.unrouteAll({ behavior: "wait" });
     },
   };
 }
