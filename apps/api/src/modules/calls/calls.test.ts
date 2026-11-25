@@ -128,13 +128,19 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
     expect((await as(alice)(callId, { samples: [sample] })).statusCode).toBe(403);
   });
 
-  it("n'accepte pas de userId fourni par le client", async () => {
+  it("ignore le userId client et conserve l'identité du token", async () => {
     const alice = await createUser(t.app, "quality-spoof");
     const bob = await createUser(t.app, "quality-peer");
     const callId = await createCall(alice, bob);
 
     const res = await as(alice)(callId, { userId: bob.user.id, samples: [sample] });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(202);
+    const rows = await t.testDb.db
+      .selectFrom("call_quality_samples")
+      .select("user_id")
+      .where("call_id", "=", callId)
+      .execute();
+    expect(rows).toEqual([{ user_id: alice.user.id }]);
   });
 
   it("borne la taille du lot et valide les valeurs", async () => {
