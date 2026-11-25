@@ -161,8 +161,8 @@ export async function attachRealtime(
   });
 
   app.addHook("onClose", async () => {
-    await callSignaling.close();
     await io.close();
+    await callSignaling.close();
     await Promise.all([pub?.quit(), sub?.quit()]);
   });
 
