@@ -136,19 +136,19 @@ export class CallSignaling {
     const targetId = members.find((member) => member.user_id !== userId)?.user_id;
     if (!targetId) throw forbidden("Destinataire de l'appel introuvable");
 
-    const callId = await this.db.transaction().execute(async (trx) => {
+    const result = await this.db.transaction().execute(async (trx) => {
       // Sérialise les invitations qui partagent un participant, y compris vers d'autres conversations.
       for (const id of [userId, targetId].sort()) {
         await sql`select pg_advisory_xact_lock(hashtextextended(${id}, 0))`.execute(trx);
       }
-      const active = await trx
+      const activeCallFor = async (participantId: string) => trx
         .selectFrom("calls as c")
         .innerJoin("conversation_members as m", "m.conversation_id", "c.conversation_id")
         .select("c.id")
-        .where("m.user_id", "in", [userId, targetId])
+        .where("m.user_id", "=", participantId)
         .where("c.ended_at", "is", null)
         .executeTakeFirst();
-      if (active) throw new AppError(409, "CALL_BUSY", "Un des participants est déjà en appel");
+      if (await activeCallFor(userId)) throw new AppError(409, "CALL_BUSY", "Vous êtes déjà en appel");
 
       const call = await trx
         .insertInto("calls")
@@ -157,18 +157,29 @@ export class CallSignaling {
         .executeTakeFirstOrThrow();
       // L'appelant est le premier participant ; l'appelé ne rejoint qu'après acceptation.
       await trx.insertInto("call_participants").values({ call_id: call.id, user_id: userId }).execute();
-      return call.id;
+      if (await activeCallFor(targetId)) {
+        await trx.updateTable("calls").set({ ended_at: new Date(), end_reason: "busy" })
+          .where("id", "=", call.id).execute();
+        await trx.updateTable("call_participants").set({ left_at: new Date() })
+          .where("call_id", "=", call.id).execute();
+        return { callId: call.id, busy: true };
+      }
+      return { callId: call.id, busy: false };
     });
 
+    if (result.busy) {
+      this.io.to(userRoom(userId)).emit("call:ended", { callId: result.callId, reason: "busy" });
+      return { callId: result.callId };
+    }
     this.io.to(userRoom(targetId)).emit("call:incoming", {
-      callId,
+      callId: result.callId,
       conversationId: payload.conversationId,
       from: userId,
       media: payload.media,
     });
-    const timer = setTimeout(() => void this.expireIfRinging(callId), this.options.ringTimeoutMs);
-    this.ringTimers.set(callId, timer);
-    return { callId };
+    const timer = setTimeout(() => void this.expireIfRinging(result.callId), this.options.ringTimeoutMs);
+    this.ringTimers.set(result.callId, timer);
+    return { callId: result.callId };
   }
 
   private async accept(userId: string, callId: string): Promise<{ callId: string }> {
