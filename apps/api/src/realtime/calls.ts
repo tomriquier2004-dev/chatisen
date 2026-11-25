@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import type { FastifyInstance } from "fastify";
 import type { Socket } from "socket.io";
-import type { TSchema } from "@sinclair/typebox";
+import type { TSchema, Static } from "@sinclair/typebox";
 import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   CallIdPayload,
@@ -13,9 +13,6 @@ import {
   RtcIceCandidatePayload,
   type CallAck,
   type CallInviteAck,
-  type CallInvitePayload,
-  type RtcDescriptionPayload,
-  type RtcIceCandidatePayload,
   type ErrorCode,
   type ClientToServerEvents,
   type ServerToClientEvents,
@@ -58,21 +55,21 @@ export class CallSignaling {
     this.disconnectTimers.delete(userId);
 
     socket.on("call:invite", this.withLimit(socket, "call-invite", 5, 60_000,
-      this.handler(socket, CallInvitePayload, async (payload) => this.invite(userId, payload))));
+      this.handler(socket, CallInvitePayload, async (payload: Static<typeof CallInvitePayload>) => this.invite(userId, payload))));
     socket.on("call:accept", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallIdPayload, async (payload) => this.accept(userId, payload.callId))));
+      this.handler(socket, CallIdPayload, async (payload: Static<typeof CallIdPayload>) => this.accept(userId, payload.callId))));
     socket.on("call:reject", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallIdPayload, async (payload) => this.reject(userId, payload.callId))));
+      this.handler(socket, CallIdPayload, async (payload: Static<typeof CallIdPayload>) => this.reject(userId, payload.callId))));
     socket.on("call:hangup", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallHangupPayload, async (payload) => this.hangup(userId, payload.callId, payload.reason ?? "hangup"))));
+      this.handler(socket, CallHangupPayload, async (payload: Static<typeof CallHangupPayload>) => this.hangup(userId, payload.callId, payload.reason ?? "hangup"))));
     socket.on("call:media-state", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallMediaStatePayload, async (payload) => this.relayMediaState(userId, payload))));
+      this.handler(socket, CallMediaStatePayload, async (payload: Static<typeof CallMediaStatePayload>) => this.relayMediaState(userId, payload))));
     socket.on("rtc:offer", this.withLimit(socket, "rtc-signal", 120, 60_000,
-      this.handler(socket, RtcDescriptionPayload, async (payload) => this.relayDescription(userId, "rtc:offer", payload))));
+      this.handler(socket, RtcDescriptionPayload, async (payload: Static<typeof RtcDescriptionPayload>) => this.relayDescription(userId, "rtc:offer", payload))));
     socket.on("rtc:answer", this.withLimit(socket, "rtc-signal", 120, 60_000,
-      this.handler(socket, RtcDescriptionPayload, async (payload) => this.relayDescription(userId, "rtc:answer", payload))));
+      this.handler(socket, RtcDescriptionPayload, async (payload: Static<typeof RtcDescriptionPayload>) => this.relayDescription(userId, "rtc:answer", payload))));
     socket.on("rtc:ice-candidate", this.withLimit(socket, "rtc-signal", 180, 60_000,
-      this.handler(socket, RtcIceCandidatePayload, async (payload) => this.relayCandidate(userId, payload))));
+      this.handler(socket, RtcIceCandidatePayload, async (payload: Static<typeof RtcIceCandidatePayload>) => this.relayCandidate(userId, payload))));
 
     socket.once("disconnect", () => this.onDisconnect(userId));
   }
@@ -332,7 +329,7 @@ export class CallSignaling {
         .where("call_id", "=", callId)
         .where("left_at", "is", null)
         .execute();
-      return { conversationId: call.conversation_id, createdAt: call.created_at };
+      return { conversationId: call.conversation_id, createdAt: call.started_at };
     });
     if (!ended) return false;
     callMetrics.recordEnded(reason, (Date.now() - Date.parse(String(ended.createdAt))) / 1000);
@@ -358,7 +355,7 @@ export class CallSignaling {
 
 /** Termine les appels d'une conversation après le commit d'un retrait de membre (§ 5.3). */
 export async function endCallsForRemovedMember(db: Db, io: IoServer, conversationId: string, userId: string): Promise<void> {
-  const calls = await db.selectFrom("calls").select(["id", "created_at"])
+  const calls = await db.selectFrom("calls").select(["id", "started_at"])
     .where("conversation_id", "=", conversationId).where("ended_at", "is", null).execute();
   for (const call of calls) {
     const ended = await db.transaction().execute(async (trx) => {
@@ -372,7 +369,7 @@ export async function endCallsForRemovedMember(db: Db, io: IoServer, conversatio
       return true;
     });
     if (!ended) continue;
-    callMetrics.recordEnded("removed", (Date.now() - Date.parse(String(call.created_at))) / 1000);
+    callMetrics.recordEnded("removed", (Date.now() - Date.parse(String(call.started_at))) / 1000);
     const members = await db.selectFrom("conversation_members").select("user_id")
       .where("conversation_id", "=", conversationId).execute();
     const recipients = [...new Set([...members.map((m) => m.user_id), userId])];
