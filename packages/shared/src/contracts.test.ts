@@ -48,7 +48,8 @@ describe("Call signaling contracts (issue #114)", () => {
     const base = { callId: "123e4567-e89b-12d3-a456-426614174000", to: "123e4567-e89b-12d3-a456-426614174001" };
     expect(Value.Check(RtcDescriptionPayload, { ...base, sdp: "v=0" })).toBe(true);
     expect(Value.Check(RtcDescriptionPayload, { ...base, sdp: "x".repeat(16_385) })).toBe(false);
-    expect(Value.Check(RtcIceCandidatePayload, { ...base, candidate: { candidate: "candidate:1" } })).toBe(false);
+    expect(Value.Check(RtcIceCandidatePayload, { ...base, candidate: { candidate: "candidate:1" } })).toBe(true);
+    expect(Value.Check(RtcIceCandidatePayload, { ...base, candidate: {} })).toBe(false);
     expect(Value.Check(RtcIceCandidatePayload, { ...base, candidate: { candidate: "x".repeat(4_097) } })).toBe(false);
     expect(Value.Check(RtcIceCandidatePayload, { ...base, candidate: { candidate: "candidate:1", extra: true } })).toBe(false);
   });
