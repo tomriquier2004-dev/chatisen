@@ -67,7 +67,7 @@ test("après une coupure réseau, les messages manqués arrivent dans l'ordre, s
   for (const n of [1, 2, 3]) await sendMessage(pageA, `pendant la coupure ${n}`);
   await expect(pageA.locator("ol li p", { hasText: "pendant la coupure 3" })).toBeVisible();
 
-  network.restore();
+  await network.restore();
   await expect(pageB.locator("ol li p", { hasText: "pendant la coupure 3" })).toBeVisible({ timeout: 20_000 });
   const texts = await messageTexts(pageB);
   expect(texts).toEqual(["avant la coupure", "pendant la coupure 1", "pendant la coupure 2", "pendant la coupure 3"]);
