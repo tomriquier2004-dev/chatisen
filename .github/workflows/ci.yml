@@ -97,6 +97,8 @@ jobs:
         run: pnpm typecheck
       - name: Tests
         run: pnpm test
+      - name: Tests de l'analyse qualité (Python)
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Build
         run: pnpm build
 
