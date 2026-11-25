@@ -44,6 +44,8 @@ const ConfigSchema = Type.Object({
   /** URLs STUN/TURN séparées par des virgules, sans identifiants. */
   TURN_URLS: Type.Optional(Type.String({ minLength: 1, maxLength: 16_384 })),
   TURN_CREDENTIAL_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 86_400, default: 3_600 }),
+  CALL_RING_TIMEOUT_SECONDS: Type.Integer({ minimum: 5, maximum: 120, default: 30 }),
+  CALL_DISCONNECT_GRACE_SECONDS: Type.Integer({ minimum: 3, maximum: 60, default: 10 }),
 });
 
 export type Config = Static<typeof ConfigSchema> & {
