@@ -349,7 +349,7 @@ describe("appels 1-1 et signalisation WebRTC", () => {
     const bob = await registerUser(a.app, "call-bob");
     const carol = await registerUser(a.app, "call-carol");
     const ab = await privateOf(alice, bob);
-    const ac = await privateOf(alice, carol);
+    const bc = await privateOf(bob, carol);
     const aliceSocket = await open(a, alice);
     const bobSocket = await open(b, bob);
     const carolSocket = await open(b, carol);
@@ -364,18 +364,21 @@ describe("appels 1-1 et signalisation WebRTC", () => {
     expect(reject.ok).toBe(true);
     expect(await rejected).toEqual({ callId: invite.data.callId, reason: "rejected" });
 
-    const incoming2 = nextEvent(bobSocket, "call:incoming");
-    const invite2 = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: ab.id, media: "audio" })) as CallAck<CallInviteAck>;
-    expect(invite2.ok).toBe(true);
-    if (!invite2.ok) return;
-    await incoming2;
-    const accepted = nextEvent(aliceSocket, "call:accepted");
-    await bobSocket.timeout(2000).emitWithAck("call:accept", { callId: invite2.data.callId });
-    await accepted;
+    const incomingCarol = nextEvent(carolSocket, "call:incoming");
+    const bobInvite = (await bobSocket.timeout(2000).emitWithAck("call:invite", { conversationId: bc.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(bobInvite.ok).toBe(true);
+    if (!bobInvite.ok) return;
+    await incomingCarol;
+    const bobAccepted = nextEvent(bobSocket, "call:accepted");
+    await carolSocket.timeout(2000).emitWithAck("call:accept", { callId: bobInvite.data.callId });
+    await bobAccepted;
 
-    const noIncoming = noEvent(carolSocket, "call:incoming");
-    const busy = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: ac.id, media: "audio" })) as CallAck<CallInviteAck>;
-    expect(busy).toMatchObject({ ok: false, error: { code: "CALL_BUSY" } });
+    const noIncoming = noEvent(bobSocket, "call:incoming");
+    const busyEnded = nextEvent(aliceSocket, "call:ended");
+    const busy = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: ab.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(busy.ok).toBe(true);
+    if (!busy.ok) return;
+    expect(await busyEnded).toEqual({ callId: busy.data.callId, reason: "busy" });
     expect(await noIncoming).toBe(true);
   });
 
