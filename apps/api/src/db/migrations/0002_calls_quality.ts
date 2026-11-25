@@ -47,8 +47,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       ["call_id", "user_id"],
       "call_participants",
       ["call_id", "user_id"],
+      (constraint) => constraint.onDelete("cascade"),
     )
-    .onDelete("cascade")
     .execute();
   await db.schema.createIndex("call_quality_samples_call_ts").on("call_quality_samples").columns(["call_id", "ts"]).execute();
 }
