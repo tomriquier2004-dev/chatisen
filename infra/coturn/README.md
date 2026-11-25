@@ -7,7 +7,7 @@ Cette pile est séparée de la VM Caddy/API. Elle prépare le service, mais ne c
 - VM Linux dédiée avec Docker Engine + Compose v2 ; IPv4 publique statique et IPv4 privée.
 - UDP/TCP 3478 et UDP 49152-49252 autorisés vers la VM. Ne pas ouvrir le port 9641 à Internet.
 - Vérifier que le sous-réseau Docker `172.30.0.0/24` ne chevauche aucun réseau VPC / VPN.
-- Accord infra sur la topologie et le coût ; voir [ADR-0017](../../docs/adr/0017-coturn-vm-dediee.md).
+- Accord infra sur la topologie et le coût ; voir [ADR-0018](../../docs/adr/0018-coturn-vm-dediee.md).
 
 ## Configuration
 
