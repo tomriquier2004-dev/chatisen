@@ -140,7 +140,7 @@
     },
     {
       "id": 6,
-      "title": "Part des échantillons relayés par TURN",
+      "title": "Part des appels relayés par TURN",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -154,7 +154,7 @@
       },
       "targets": [
         {
-          "expr": "sum(chatisen_call_quality_samples_total{candidate_type=\"relay\"}) / clamp_min(sum(chatisen_call_quality_samples_total), 1)",
+          "expr": "sum(chatisen_calls_by_ice_candidate_type{candidate_type=\"relay\"}) / clamp_min(sum(chatisen_calls_by_ice_candidate_type), 1)",
           "legendFormat": "part TURN",
           "refId": "A"
         }
