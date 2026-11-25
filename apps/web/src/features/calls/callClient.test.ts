@@ -104,6 +104,9 @@ describe("CallClient WebRTC", () => {
     expect(h.client.microphoneEnabled).toBe(false);
     expect(h.client.cameraEnabled).toBe(false);
     expect(h.socket.emitted.filter((e) => e.event === "rtc:offer")).toHaveLength(offersBeforeMute);
+    expect(h.socket.emitted.some((e) => e.event === "call:media-state" && (e.payload as { cameraEnabled: boolean }).cameraEnabled === false)).toBe(true);
+    h.socket.fire("call:media-state", { callId, from: "peer-1", cameraEnabled: false });
+    expect(h.client.remoteCameraEnabled).toBe(false);
     await h.client.hangup();
     expect(h.track.stop).toHaveBeenCalledOnce();
     expect(h.videoTrack.stop).toHaveBeenCalledOnce();
