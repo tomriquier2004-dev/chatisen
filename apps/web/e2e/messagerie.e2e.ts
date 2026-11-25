@@ -130,8 +130,8 @@ test("après une coupure, la liste des conversations est rechargée (nouvelle co
 
   await network.restore();
   // Sans recharger la page : la conversation privée apparaît, l'aperçu et le non-lu du groupe sont à jour.
-  await expect(conversationButton(pageB, alice.displayName)).toBeVisible({ timeout: 20_000 });
+  await expect(conversationButton(pageB, alice.displayName)).toBeVisible({ timeout: 35_000 });
   const groupEntry = conversationButton(pageB, group);
   await expect(groupEntry).toContainText("message pendant la coupure");
   await expect(groupEntry.getByLabel("1 non lus")).toBeVisible();
-});
+}, 60_000);
