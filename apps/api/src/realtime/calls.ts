@@ -14,7 +14,7 @@ import {
   type ServerToClientEvents,
 } from "@chatisen/shared";
 import type { Db } from "../db";
-import { AppError, forbidden, notFound } from "../errors";
+import { AppError, forbidden } from "../errors";
 import { requireMember } from "../modules/conversations/service";
 import type { RateLimiter } from "../plugins/rate-limit";
 import { userRoom } from "./events";
@@ -181,7 +181,7 @@ export class CallSignaling {
       if (!participants.some((p) => p.user_id === userId)) {
         await trx.insertInto("call_participants").values({ call_id: callId, user_id: userId }).execute();
       }
-      return { conversationId: call.conversation_id, initiatorId: call.initiator_id };
+      return { conversationId: call.conversation_id };
     });
     await this.emitToConversation(result.conversationId, "call:accepted", { callId, userId });
     return { callId };
@@ -244,7 +244,7 @@ export class CallSignaling {
   private async expireIfRinging(callId: string): Promise<void> {
     this.ringTimers.delete(callId);
     const participants = await this.db.selectFrom("call_participants").select("user_id").where("call_id", "=", callId).execute();
-    if (participants.length < 2) await this.endCall(callId, "timeout");
+    await this.endCallIfRinging(callId);
   }
 
   private async onDisconnect(userId: string): Promise<void> {
@@ -270,14 +270,28 @@ export class CallSignaling {
   }
 
   private async endCall(callId: string, reason: CallEndReason): Promise<boolean> {
+    return this.finalizeCall(callId, reason, false);
+  }
+
+  /** Timeout atomique : une acceptation qui gagne le verrou empêche le timeout de terminer l'appel. */
+  private async endCallIfRinging(callId: string): Promise<boolean> {
+    return this.finalizeCall(callId, "timeout", true);
+  }
+
+  private async finalizeCall(callId: string, reason: CallEndReason, onlyIfRinging: boolean): Promise<boolean> {
     const ended = await this.db.transaction().execute(async (trx) => {
-      const call = await trx.updateTable("calls")
+      const call = await trx.selectFrom("calls").selectAll().where("id", "=", callId).forUpdate().executeTakeFirst();
+      if (!call || call.ended_at) return undefined;
+      if (onlyIfRinging) {
+        const participants = await trx.selectFrom("call_participants").select("user_id")
+          .where("call_id", "=", callId).execute();
+        if (participants.length >= 2) return undefined;
+      }
+      await trx.updateTable("calls")
         .set({ ended_at: new Date(), end_reason: reason })
         .where("id", "=", callId)
         .where("ended_at", "is", null)
-        .returning("conversation_id")
-        .executeTakeFirst();
-      if (!call) return undefined;
+        .execute();
       await trx.updateTable("call_participants")
         .set({ left_at: new Date() })
         .where("call_id", "=", callId)
