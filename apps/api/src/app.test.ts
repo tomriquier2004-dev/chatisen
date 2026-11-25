@@ -70,6 +70,7 @@ describe("GET /metrics", () => {
     expect(res.headers["content-type"]).toContain("text/plain");
     expect(res.body).toContain("# TYPE chatisen_calls_started_total counter");
     expect(res.body).toContain("# TYPE chatisen_call_quality_samples_total counter");
+    expect(res.body).toContain("# TYPE chatisen_calls_by_ice_candidate_type gauge");
     expect(res.body).toContain("chatisen_call_duration_seconds_count");
   });
 });
