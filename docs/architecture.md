@@ -248,13 +248,11 @@ Convention : `domaine:action`. Les événements client → serveur utilisent l'*
 | S → C | `presence:update` | `{ userId, status }` | Présence |
 | C ↔ S | `typing:start` / `typing:stop` | `{ conversationId }` | Indicateur de saisie |
 | C → S | `call:invite` | `{ conversationId, media }` → ack `{ callId }` | Démarrer un appel (FR-09, FR-10) |
-| S → C | `call:incoming` | `{ callId, conversationId, from, media }` | Sonnerie |
-| C → S | `call:accept` / `call:reject` / `call:hangup` | `{ callId }` → ack `{ callId }` | Cycle de vie de l'appel |
-| C ↔ S | `call:media-state` | `{ callId, to, cameraEnabled }` | État caméra relayé uniquement à l'autre participant (FR-11) |
-| S → C | `call:accepted` | `{ callId, userId }` | L'appelé a accepté ; l'ACK de l'invitation ne signifie pas que l'appel est établi |
+| S → C | `call:incoming` | `{ callId, from, media }` | Sonnerie |
+| C → S | `call:accept` / `call:reject` / `call:hangup` | `{ callId }` | Cycle de vie de l'appel |
 | C ↔ S | `rtc:offer` / `rtc:answer` | `{ callId, to, sdp }` | Signalisation SDP |
 | C ↔ S | `rtc:ice-candidate` | `{ callId, to, candidate }` | Candidats ICE |
-| S → C | `call:ended` | `{ callId, reason }` (`hangup`, `rejected`, `timeout`, `busy`, `removed`, `disconnected`, `failed`) | Fin d'appel |
+| S → C | `call:ended` | `{ callId, reason }` | Fin d'appel |
 
 Rooms Socket.IO : `user:<userId>` (toutes les connexions d'un utilisateur, pour les notifications et la sonnerie) et `conv:<conversationId>` (diffusion des messages). Le serveur fait rejoindre les rooms `conv:*` **lui-même**, d'après la base, au handshake : le client ne choisit jamais les rooms qu'il écoute (FR-03). Quand l'appartenance change pendant qu'un membre est connecté, le serveur met ses rooms à jour en direct (§ 5.3).
 
@@ -371,13 +369,13 @@ sequenceDiagram
     B->>S: GET /turn/credentials
     S-->>A: call:accepted
     A->>A: getUserMedia + RTCPeerConnection(iceServers)
-    A->>S: rtc:offer {callId, to, sdp}
+    A->>S: rtc:offer {sdp}
     S-->>B: rtc:offer
-    B->>S: rtc:answer {callId, to, sdp}
+    B->>S: rtc:answer {sdp}
     S-->>A: rtc:answer
-    A->>S: rtc:ice-candidate {callId, to, candidate} (en continu)
+    A->>S: rtc:ice-candidate (en continu)
     S-->>B: rtc:ice-candidate
-    B->>S: rtc:ice-candidate {callId, to, candidate}
+    B->>S: rtc:ice-candidate
     S-->>A: rtc:ice-candidate
     A-->>T: STUN : découverte IP publique
     A-->>B: média SRTP direct (P2P)
@@ -389,7 +387,7 @@ sequenceDiagram
     A->>S: POST /calls/:id/quality (lot d'échantillons)
 ```
 
-- **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; `GET /api/v1/turn/credentials` est authentifiée et limitée à 10 requêtes/minute/utilisateur. L'API génère `username = <expiration>:<userId>` et `credential = base64(HMAC-SHA1(secret, username))`. La durée de vie est configurable (`TURN_CREDENTIAL_TTL_SECONDS`, 3 600 s par défaut, bornée entre 60 et 86 400 s). `TURN_SHARED_SECRET` et `TURN_URLS` viennent de la configuration ; sur un hôte exposé, le démarrage est refusé si le secret manque ou ressemble à une valeur de développement. Le secret partagé n'est jamais renvoyé au client ni journalisé.
+- **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; l'API génère `username = <expiration>:<userId>` et `credential = HMAC-SHA1(secret, username)`, avec une durée de vie courte. Aucun mot de passe TURN statique n'est exposé au client.
 - coturn est isolé sur une **VM dédiée** avec IP publique statique (proposition ADR-0017 en attente de validation infra / encadrant). Il écoute en **UDP/TCP 3478** et relaie sur **UDP 49152-49252**. Pas de TURN/TLS sur 443 (réservé à Caddy) ni sur 5349 pour le premier jalon ; un réseau qui filtre UDP peut donc empêcher le relais (risque R4).
 - **Micro / caméra** (FR-11) : activation / désactivation via `track.enabled`, sans renégociation. **Partage d'écran** (FR-15) : `getDisplayMedia()` puis `RTCRtpSender.replaceTrack()` sur la piste vidéo, sans renégociation non plus.
 
@@ -434,7 +432,7 @@ flowchart TB
         COTURN["coturn<br/>3478 UDP/TCP<br/>49152-49252 UDP"]
     end
     CADDY --> API
-    CADDY -- "/grafana (auth)" --> GRAF
+    ADM["Admin"] -. "tunnel SSH, 127.0.0.1:3000" .-> GRAF
     API --> PG
     API --> RD
     BKP -- "pg_dump" --> PG
@@ -449,10 +447,10 @@ flowchart TB
 
 - La VM applicative et la VM coturn sont deux hôtes distincts ; les stacks Compose sont démarrées séparément. `infra/coturn/compose.yml` fixe l'adresse privée du conteneur et configure la traduction IP publique/privée. Cette topologie est proposée dans l'ADR-0017 et doit être validée avant déploiement.
 - La stack de supervision est indépendante (`infra/observability/compose.yml`) et rejoint le réseau Docker privé `chatisen-observability` pour scruter l'API et coturn ; ses interfaces Prometheus/Grafana restent liées à `127.0.0.1`.
-- **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne.
+- **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne. Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM (accès par tunnel SSH). La vue cible du § 8.3 déplace PostgreSQL chez Supabase, **à confirmer** avec le prof et Tom : elle contredit cette règle et l'ADR-0006.
 - **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
-- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0017, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste hors périmètre.
+- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0017, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
 
 ### 8.2 Chaîne CI/CD
 
@@ -462,6 +460,242 @@ main: … → build images Docker → Trivy (scan d'image) → push registry →
 ```
 
 Les images sont taguées avec le SHA du commit ; **un rollback = redéployer le tag précédent**.
+
+### 8.3 Flux réseau, frontières de confiance, vues J1 et cible
+
+Version du 25 novembre 2026, après la review de Tom. Cette section sert à **transcrire l'architecture en code** : chaque flux a un numéro `Fxx`, une preuve et, en fin de section, le fichier ou la ressource qui le met en œuvre. Deux vues :
+
+- **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
+- **Cible** : load balancer réseau, VM TURN séparée, base sur Supabase, copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
+
+`<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
+
+État : **existant** (en place ou dans le code) · **proposé** (décidé ou en cours, pas déployé) · **à trancher** · **faiblesse** (en place, à corriger) · **à confirmer** (contradiction entre une décision de l'équipe et le dépôt, voir plus bas) · **manquant**.
+
+#### Vue J1 : une VM, tout dans le Compose
+
+```mermaid
+flowchart LR
+    subgraph NET["Internet (non fiable)"]
+        U["Navigateur"]
+        ADM["Admin (gcloud)"]
+        DNS["DNS du prof"]
+        ACME["Let's Encrypt ou ZeroSSL<br/>émetteur non prouvé"]
+    end
+    subgraph GH["GitHub (CI)"]
+        CI["GitHub Actions<br/>tests, Semgrep, build, Trivy"]
+        REG["Registre d'images<br/>à choisir (#12)"]
+    end
+    subgraph GCP["Google Cloud, projet chatisen (ADR-0012)"]
+        IP["IP statique chatisen-ip"]
+        FW["Pare-feu VPC<br/>chatisen-web : 80, 443<br/>chatisen-turn : 3478, 49152-49252<br/>default-allow-ssh : 22 ouvert à Internet (faiblesse)"]
+        subgraph VM["VM chatisen-prod : seule VM, arrêt à minuit"]
+            SSHD["sshd :22<br/>OS Login"]
+            COT["coturn<br/>3478 udp/tcp, relais 49152-49252"]
+            MON["Prometheus, Loki, Grafana<br/>127.0.0.1 seulement"]
+            subgraph DK["Réseau Docker interne : seul Caddy est publié"]
+                CAD["Caddy 80, 443<br/>client statique /srv/web"]
+                API["API Fastify :3000<br/>non publié"]
+                RED[("Redis :6379")]
+                PG[("PostgreSQL :5432<br/>à confirmer")]
+                BKP["Sauvegardes<br/>pg_dump + age, 6 h"]
+            end
+        end
+    end
+    OFF["Copie hors de l'hôte<br/>manquante (#42)"]
+    U -- "F00 résolution" --> DNS
+    U -- "F01 HTTPS + WSS 443, F02 HTTP 80" --> IP
+    U -- "F04 TURN 3478, F05 relais UDP" --> IP
+    ACME -- "F03 HTTP-01 80" --> IP
+    ADM -- "F07 SSH 22" --> IP
+    IP --> FW
+    FW --> CAD
+    FW --> COT
+    FW --> SSHD
+    CAD -- "F11 HTTP en clair" --> API
+    API -- "F12 en clair" --> RED
+    API -- "F13 en clair" --> PG
+    BKP -- "F14 pg_dump" --> PG
+    BKP -. "F21 à créer" .-> OFF
+    ADM -. "F15 tunnel SSH, 127.0.0.1:3000" .-> MON
+    CI -- "F19 push" --> REG
+    VM -- "F20 pull" --> REG
+    CI -. "F09 à trancher" .-> SSHD
+    API -. "F17 secret HMAC partagé, aucun flux" .- COT
+```
+
+#### Vue cible : load balancer, VM TURN, Supabase
+
+```mermaid
+flowchart LR
+    subgraph NET["Internet (non fiable)"]
+        U["Navigateur"]
+        ADM["Admin (gcloud)"]
+        DNS["DNS du prof"]
+        ACME["Let's Encrypt ou ZeroSSL"]
+        HC["Sondes de santé Google"]
+    end
+    subgraph GH["GitHub (CI)"]
+        CI["GitHub Actions<br/>build, Trivy, digest (#43)"]
+        REG["Registre d'images<br/>à choisir (#12)"]
+    end
+    subgraph GCP["Google Cloud, projet chatisen"]
+        IP["IP statique chatisen-ip"]
+        LB["Load balancer réseau<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
+        IAP["IAP 35.235.240.0/20<br/>SSH et déploiement"]
+        NAT["Cloud NAT<br/>sortie des VM (F18)"]
+        FW["Pare-feu VPC<br/>chatisen-web, chatisen-turn, chatisen-ssh-iap<br/>default-allow-ssh supprimée"]
+        subgraph VW["VM web"]
+            SSHD["sshd :22<br/>OS Login"]
+            MON["Prometheus, Loki, Grafana<br/>127.0.0.1 seulement"]
+            subgraph DK["Réseau Docker interne : seul Caddy est publié"]
+                CAD["Caddy 80, 443<br/>client statique"]
+                API["API Fastify x2<br/>ADR-0011 ouvert"]
+                RED[("Redis")]
+                BKP["Sauvegardes<br/>pg_dump + age"]
+            end
+        end
+        subgraph VT["VM TURN : à confirmer (prof, Tom)"]
+            COT["coturn<br/>external-ip = IP du load balancer"]
+        end
+    end
+    subgraph SUP["Supabase (UE) : à confirmer, ADR-0017"]
+        PGS[("PostgreSQL<br/>TLS, mode session")]
+    end
+    OFF["Copie hors de l'hôte<br/>bucket à choisir (#42)"]
+    U -- "F00 résolution" --> DNS
+    U -- "F01 HTTPS + WSS 443, F02 HTTP 80" --> IP
+    U -- "F04 TURN 3478, F05 relais UDP" --> IP
+    ACME -- "F03 HTTP-01 80" --> IP
+    ADM -- "F08 SSH via IAP" --> IAP
+    CI -. "F09 à trancher" .-> IAP
+    IAP --> SSHD
+    IP --> LB
+    LB --> FW
+    FW -- "web 80, 443" --> CAD
+    FW -- "TURN" --> COT
+    HC -- "F10 sondes" --> VW
+    HC -- "F10 sondes" --> VT
+    CAD -- "F11 HTTP en clair" --> API
+    API -- "F12 en clair" --> RED
+    API -- "F13 PostgreSQL, TLS via Internet" --> PGS
+    BKP -- "F14 pg_dump, TLS" --> PGS
+    BKP -. "F21 copie chiffrée age, TLS" .-> OFF
+    MON -- "F16 métriques 9641" --> COT
+    ADM -. "F15 tunnel SSH, 127.0.0.1:3000" .-> MON
+    API -. "F17 secret HMAC partagé, aucun flux" .- COT
+    VW -- "F18 sortie" --> NAT
+    VT -- "F18 sortie" --> NAT
+    CI -- "F19 push" --> REG
+    VW -- "F20 pull" --> REG
+```
+
+#### Deux décisions à confirmer avec le prof et Tom
+
+| Sujet | Pour (décision de THEO / consigne du prof) | Contre (review de Tom) | Dans les vues |
+| --- | --- | --- | --- |
+| **Base sur Supabase** (ADR-0017 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
+| **VM TURN séparée** | Le prof : coturn consomme beaucoup et peut geler Caddy ; meilleure scalabilité (la bande passante TURN est le coût qui monte) | L'ADR-0016 met coturn sur la même VM et la même IP ; une VM de plus à créer, durcir et arrêter chaque nuit avant J2 | J1 : coturn sur la VM. Cible : VM TURN |
+
+Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
+
+**Coût de la vue cible** : le load balancer et Cloud NAT sont facturés à l'heure, y compris quand les VM sont éteintes (à vérifier dans le calculateur de prix GCP). Une alternative sans load balancer : donner à la VM TURN sa propre IP statique et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof), et laisser une IP externe aux deux VM pour se passer de Cloud NAT.
+
+#### Frontières de confiance
+
+| Zone | Contient | Ce qui la traverse |
+| --- | --- | --- |
+| Internet (non fiable) | navigateurs, admin, DNS du prof, autorité ACME | F00-F08, F10 |
+| GitHub (confiance CI) | CI, registre d'images, secrets des GitHub Environments | F09, F19, F20 |
+| GCP, projet `chatisen` | IP, load balancer (cible), pare-feu VPC, VM, IAP, Cloud NAT | toutes les entrées passent par le pare-feu VPC |
+| Réseau Docker de la VM | Caddy, API, Redis, PostgreSQL (J1), sauvegardes, supervision | F11-F14 en clair : seul Caddy publie des ports |
+| Supabase (cible) | PostgreSQL | F13, F14 en TLS à travers Internet |
+
+Ces flux servent tels quels à l'atelier STRIDE (#27).
+
+#### Flux entrants depuis Internet
+
+| N° | Vue | Source | Destination | Port | Protocole | Chiffrement | État | Preuve | ADR / source |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F00 | les deux | Navigateur | DNS du prof (`dc-ops.isen.fedyna.fr` → `<IP>`) | 53/udp et 53/tcp | DNS | **aucun** (DNS classique) | existant | `nslookup dc-ops.isen.fedyna.fr 8.8.8.8` → `<IP>` | ADR-0012 |
+| F01 | les deux | Navigateur | IP → Caddy (J1 : VM ; cible : load balancer → VM web) | 443/tcp | HTTPS + WSS `/socket.io` | TLS, terminé par Caddy | proposé | `curl -I https://dc-ops.isen.fedyna.fr` ; `testssl.sh dc-ops.isen.fedyna.fr` | ADR-0016, `infra/caddy/Caddyfile` |
+| F02 | les deux | Navigateur | IP → Caddy | 80/tcp | HTTP | aucun (redirection vers 443) | proposé | `curl -I http://dc-ops.isen.fedyna.fr` → 308 | ADR-0016 |
+| F03 | les deux | Let's Encrypt ou ZeroSSL | IP → Caddy | 80/tcp | HTTP-01 | aucun (défi public) | proposé, émetteur non prouvé (#113) | `openssl s_client -connect dc-ops.isen.fedyna.fr:443` (champ `issuer`) | ADR-0016 |
+| F04 | les deux | Navigateur | IP → coturn (J1 : même VM ; cible : VM TURN) | 3478/udp et 3478/tcp | STUN / TURN | **aucun** (pas de TLS sur coturn) | proposé | `turnutils_uclient` ; page « Trickle ICE » | ADR-0016 § 5 |
+| F05 | les deux | Navigateur ou pair | IP → coturn, relais | 49152-49252/udp | média WebRTC relayé | DTLS-SRTP (de bout en bout) | proposé | `chrome://webrtc-internals` : candidat `relay`, `dtlsState: connected` | ADR-0016 |
+| F06 | J1 | Internet | IP | 5349/tcp | TURN sur TLS | — | à fermer (ouvert sans service) | `Test-NetConnection <IP> -Port 5349` : aujourd'hui refus (ouvert sans service) ; après fermeture par le pare-feu : délai dépassé | ADR-0016 § 5 |
+| F07 | J1 | Admin | VM | 22/tcp | SSH (OS Login) | SSH | **faiblesse** : `default-allow-ssh` ouvert à `0.0.0.0/0` | `gcloud compute firewall-rules list` | `infra/README.md` |
+| F08 | cible (possible dès J1) | Admin | IAP `35.235.240.0/20` → VM | 22/tcp | SSH via tunnel IAP | SSH dans HTTPS | proposé (remplace F07) | `gcloud compute ssh chatisen-prod --tunnel-through-iap` | `infra/README.md` |
+| F09 | à trancher | GitHub Actions | VM | 22/tcp via IAP, ou aucun (pull depuis la VM) | SSH ou HTTPS sortant | SSH / TLS | à trancher | job de déploiement vert | ADR-0012 § 6, #12 |
+| F10 | cible | Sondes de santé GCP `35.191.0.0/16`, `209.85.152.0/22`, `209.85.204.0/22` | VM web, VM TURN | port de santé à choisir | TCP ou HTTP | aucun | proposé, plages à vérifier | backends « HEALTHY » (`gcloud compute backend-services get-health`) | — |
+
+#### Flux internes, déploiement et sortants
+
+| N° | Vue | Source | Destination | Port | Protocole | Chiffrement | État | Preuve | ADR / source |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F11 | les deux | Caddy | API (`api:3000`) | 3000/tcp | HTTP, réseau Docker | **aucun** | proposé | `Test-NetConnection <IP> -Port 3000` : bloqué depuis Internet | ADR-0016, `infra/caddy/Caddyfile` |
+| F12 | les deux | API | Redis | 6379/tcp | RESP, réseau Docker | **aucun** | existant (code), déploiement proposé | port non publié (`docker compose ps`) | ADR-0006, `apps/api/src/config.ts` |
+| F13 | J1 | API | PostgreSQL (Compose) | 5432/tcp | PostgreSQL, réseau Docker | **aucun** | **à confirmer** (voir plus haut) | port non publié (`docker compose ps`) | ADR-0006 |
+| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0017 (brouillon) |
+| F14 | les deux | postgres-backup | PostgreSQL (J1 : local ; cible : Supabase) | 5432/tcp | `pg_dump` | fichier chiffré age (+ TLS en cible) | existant (script) | `infra/backup/restore-test.sh` | #9, #31, `infra/backup/` |
+| F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
+| F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
+| F17 | les deux | API | coturn | — | aucun flux : secret HMAC partagé | — | proposé | identifiants refusés après expiration | architecture § 6.4 |
+| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) | `curl https://…` depuis la VM | — |
+| F19 | les deux | CI (GitHub Actions) | Registre d'images | 443/tcp | HTTPS (push d'images API et client) | TLS | à trancher : registre non choisi | image taguée par SHA dans le registre | ADR-0012, #12, `ci.yml` (commentaire « push registry ») |
+| F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
+| F21 | cible (manquant en J1) | postgres-backup | stockage hors de l'hôte (bucket à choisir) | 443/tcp | HTTPS | TLS + fichier chiffré age | **manquant** | restauration depuis la copie distante | #42 |
+
+Le client statique ne crée pas de flux réseau : il est construit par la CI (image ou artefact, à trancher dans #12) et servi par Caddy depuis `/srv/web`. Les secrets de production viennent des GitHub Environments et d'un `.env` hors dépôt sur la VM (`chmod 600`, ADR-0012 § 6).
+
+#### Fermé (à prouver)
+
+| N° | Source | Destination | Port | État | Preuve |
+| --- | --- | --- | --- | --- | --- |
+| X1 | Internet | VM | 3389/tcp (RDP) | fermé (règle supprimée le 25/11) | `Test-NetConnection <IP> -Port 3389` : délai dépassé |
+| X2 | Internet | PostgreSQL, Redis, API, Prometheus, Grafana | 5432, 6379, 3000, 9090/tcp | fermé | même commande, délai dépassé |
+| X3 | Internet | Caddy | 443/udp (HTTP/3) | fermé | aucune règle UDP 443 dans le pare-feu ; pas d'en-tête `Alt-Svc` (`protocols h1 h2` dans le Caddyfile) |
+
+Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouvert sans service refuse tout de suite (`infra/README.md`). La preuve se fait depuis un réseau qui laisse sortir les ports non web, **avec un contrôle** : tester d'abord un port ouvert non web (le 22 tant qu'il est autorisé). Si le contrôle dépasse le délai, le réseau de test est inadapté (voir [`ports-tls-2026-11-25.md`](reports/ports-tls-2026-11-25.md) et l'issue #112).
+
+#### Points uniques de défaillance (J1)
+
+| Élément | Effet d'une panne | Réponse retenue |
+| --- | --- | --- |
+| Une seule VM | tout est indisponible | assumé : NFR-02 et NFR-03 sont traitées par la mesure d'une instance, pas par la redondance (ADR-0012) |
+| Redis seul, sans persistance | sessions temps réel et rate limit perdus, rien de durable (ADR-0006) | redémarrage ; Redis managé en évolution |
+| PostgreSQL sur la VM | perte de la VM = perte des données depuis la dernière copie | copie hors hôte (#42), manquante |
+| Arrêt automatique à minuit (`arret-nuit-minuit`) | ni service, ni sauvegardes, ni métriques la nuit | à suspendre pendant les mesures et répétitions (ADR-0012) |
+| Supervision sur la même VM | tombe avec ce qu'elle surveille | évolution : la sortir de la VM |
+
+#### Traçabilité et documents périmés
+
+- **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
+- ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt.
+
+#### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
+
+1. **Plusieurs instances d'API** : elles sont sans état et l'adapter Redis est testé sur deux instances. Trancher l'ADR-0011 ; deux conteneurs sur la même VM suffisent pour une démonstration, mesurée avec k6 (#24).
+2. **Base** : le compteur `last_seq` sérialise les envois d'une même conversation. Avec Supabase ou plusieurs API, la taille des pools multipliée par le nombre d'instances doit rester sous la limite du pooler. Plus tard, un réplica de lecture pour l'historique.
+3. **Redis** : managé ou répliqué, et adapter Socket.IO à base de streams (récupération d'état après coupure).
+4. **TURN** : VM dédiée (cible), puis plusieurs serveurs avec le même secret HMAC ; un SFU pour les conférences (suspendu).
+5. **Observabilité hors de la VM applicative** ; le générateur de charge tourne déjà hors de l'hôte testé (ADR-0012).
+6. **Client statique sur un CDN ou un bucket**, Caddy ne gardant que l'API et les WebSocket.
+7. **Terraform** pour les ressources GCP (VM, pare-feu, IP, IAP, calendrier d'arrêt), créées à la main aujourd'hui (NFR-07).
+8. **Au-delà d'un hôte** : groupe d'instances managé ou k3s derrière un load balancer Google, qui reprendrait le TLS et la protection DDoS.
+
+#### Transcription en code
+
+| Ligne(s) | Fichier ou ressource |
+| --- | --- |
+| F01-F06 | règles de pare-feu VPC `chatisen-web`, `chatisen-turn` ; en cible, règles de transfert du load balancer |
+| F07-F08 | règle `chatisen-ssh-iap` (source `35.235.240.0/20`), suppression de `default-allow-ssh` |
+| F10 | règle de pare-feu des sondes de santé, services de backend du load balancer (cible) |
+| F11-F13 (J1) | `infra/compose/` : seul Caddy publie des ports |
+| F04-F06, F16 | `infra/coturn/turnserver.conf` (ports, `external-ip`, plage de relais, métriques) |
+| F13-F14, F21 | `DATABASE_URL`, `infra/backup/compose.yml`, cible de copie (#42) |
+| F09, F19-F20 | `.github/workflows/deploy.yml` (#12), images par digest (#43) |
 
 ---
 
@@ -545,13 +779,17 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | --- | --- | --- |
 | [ADR-0002](adr/0002-client-preact-vite.md) | Client : Preact + Vite plutôt que React / Svelte (avec mesures de bundle) | accepté |
 | [ADR-0003](adr/0003-serveur-fastify.md) | Serveur : Node + TypeScript + Fastify plutôt qu'Express / NestJS | accepté |
-| ADR-0004 | Temps réel : Socket.IO plutôt que WebSocket brut / SSE | proposé |
+| [ADR-0004](adr/0004-socketio-temps-reel.md) | Temps réel : Socket.IO plutôt que WebSocket brut / SSE | proposé, rédigé |
 | [ADR-0005](adr/0005-contrats-typebox.md) | Contrats partagés : TypeBox plutôt que Zod | proposé, rédigé |
 | [ADR-0006](adr/0006-donnees-postgresql-redis-kysely.md) | Données : PostgreSQL + Redis, accès Kysely, migrations au démarrage | proposé, rédigé |
 | [ADR-0007](adr/0007-sessions-jwt-refresh-rotatif.md) | Sessions : JWT court + refresh token rotatif en cookie | proposé, rédigé |
 | [ADR-0008](adr/0008-ordre-idempotence-messages.md) | Ordre et idempotence des messages (`seq` + `client_msg_id`) | proposé, rédigé |
-| ADR-0009 | Média : WebRTC P2P + coturn, identifiants éphémères | proposé |
+| [ADR-0009](adr/0009-webrtc-p2p-coturn.md) | Média : WebRTC P2P + coturn, identifiants éphémères | proposé, rédigé |
 | ADR-0010 | Conférences : mesh vs SFU | ouvert |
 | ADR-0011 | Multi-instance : sticky sessions vs WebSocket seul | ouvert |
-| ADR-0012 | Déploiement : Compose vs Kubernetes ; hébergement | ouvert (dépend de l'encadrant) |
+| [ADR-0012](adr/0012-deploiement-et-hebergement.md) | Déploiement : Compose vs Kubernetes ; hébergement (Google Cloud) | proposé, rédigé |
 | ADR-0013 | Observabilité : Prometheus + Loki + Grafana | proposé |
+| [ADR-0014](adr/0014-release-please.md) | Versionnement et releases avec release-please | proposé, rédigé |
+| ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
+| [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
+| ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
