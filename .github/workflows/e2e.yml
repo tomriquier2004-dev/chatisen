@@ -36,6 +36,21 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U chatisen -d chatisen"
           --health-interval 2s --health-timeout 3s --health-retries 30
+      coturn:
+        image: coturn/coturn:4.6.2
+        ports:
+          - 3478:3478/udp
+          - 3478:3478/tcp
+          - 49160-49200:49160-49200/udp
+        options: >-
+          --health-cmd "turnutils_stunclient 127.0.0.1"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+        command: >-
+          -n --log-file=stdout --fingerprint --use-auth-secret
+          --static-auth-secret=chatisen-e2e-shared-secret-0123456789abcdef
+          --realm=chatisen.test --listening-port=3478 --listening-ip=0.0.0.0
+          --relay-ip=0.0.0.0 --external-ip=127.0.0.1
+          --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli
       redis:
         image: redis:7-bookworm
         ports:
@@ -46,6 +61,8 @@ jobs:
     env:
       E2E_DATABASE_URL: postgres://chatisen:chatisen-ci@127.0.0.1:5432/chatisen
       TEST_REDIS_URL: redis://127.0.0.1:6379
+      TURN_SHARED_SECRET: chatisen-e2e-shared-secret-0123456789abcdef
+      TURN_URLS: turn:127.0.0.1:3478?transport=udp
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
