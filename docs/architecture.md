@@ -387,7 +387,7 @@ sequenceDiagram
     A->>S: POST /calls/:id/quality (lot d'échantillons)
 ```
 
-- **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; l'API génère `username = <expiration>:<userId>` et `credential = HMAC-SHA1(secret, username)`, avec une durée de vie courte. Aucun mot de passe TURN statique n'est exposé au client.
+- **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; `GET /api/v1/turn/credentials` est authentifiée et limitée à 10 requêtes/minute/utilisateur. L'API génère `username = <expiration>:<userId>` et `credential = base64(HMAC-SHA1(secret, username))`. La durée de vie est configurable (`TURN_CREDENTIAL_TTL_SECONDS`, 3 600 s par défaut, bornée entre 60 et 86 400 s). `TURN_SHARED_SECRET` et `TURN_URLS` viennent de la configuration ; sur un hôte exposé, le démarrage est refusé si le secret manque ou ressemble à une valeur de développement. Le secret partagé n'est jamais renvoyé au client ni journalisé.
 - coturn est configuré pour écouter en **UDP 3478, TCP 3478 et TLS 443/5349** : sur un réseau d'école ou d'entreprise qui filtre l'UDP, TURN sur TLS 443 reste la dernière option qui passe (risque R4).
 - **Micro / caméra** (FR-11) : activation / désactivation via `track.enabled`, sans renégociation. **Partage d'écran** (FR-15) : `getDisplayMedia()` puis `RTCRtpSender.replaceTrack()` sur la piste vidéo, sans renégociation non plus.
 
