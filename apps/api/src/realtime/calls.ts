@@ -13,6 +13,7 @@ import {
   type CallAck,
   type CallInviteAck,
   type CallInvitePayload,
+  type CallMediaStatePayload,
   type RtcDescriptionPayload,
   type RtcIceCandidatePayload,
   type ErrorCode,
