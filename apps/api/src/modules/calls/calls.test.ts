@@ -159,8 +159,10 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
     const callId = await createCall(alice, bob);
     const stale = { ...sample, observedAt: new Date(Date.now() - 11 * 60_000).toISOString() };
     const future = { ...sample, observedAt: new Date(Date.now() + 60_000).toISOString() };
+    const noTimezone = { ...sample, observedAt: sample.observedAt.replace(/Z$/, "") };
     expect((await as(alice)(callId, { samples: [stale] })).statusCode).toBe(400);
     expect((await as(alice)(callId, { samples: [future] })).statusCode).toBe(400);
+    expect((await as(alice)(callId, { samples: [noTimezone] })).statusCode).toBe(400);
   });
 
   it("limite la fréquence des lots par utilisateur", async () => {
