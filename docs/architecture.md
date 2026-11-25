@@ -248,11 +248,12 @@ Convention : `domaine:action`. Les événements client → serveur utilisent l'*
 | S → C | `presence:update` | `{ userId, status }` | Présence |
 | C ↔ S | `typing:start` / `typing:stop` | `{ conversationId }` | Indicateur de saisie |
 | C → S | `call:invite` | `{ conversationId, media }` → ack `{ callId }` | Démarrer un appel (FR-09, FR-10) |
-| S → C | `call:incoming` | `{ callId, from, media }` | Sonnerie |
-| C → S | `call:accept` / `call:reject` / `call:hangup` | `{ callId }` | Cycle de vie de l'appel |
+| S → C | `call:incoming` | `{ callId, conversationId, from, media }` | Sonnerie |
+| C → S | `call:accept` / `call:reject` / `call:hangup` | `{ callId }` → ack `{ callId }` | Cycle de vie de l'appel |
+| S → C | `call:accepted` | `{ callId, userId }` | L'appelé a accepté ; l'ACK de l'invitation ne signifie pas que l'appel est établi |
 | C ↔ S | `rtc:offer` / `rtc:answer` | `{ callId, to, sdp }` | Signalisation SDP |
 | C ↔ S | `rtc:ice-candidate` | `{ callId, to, candidate }` | Candidats ICE |
-| S → C | `call:ended` | `{ callId, reason }` | Fin d'appel |
+| S → C | `call:ended` | `{ callId, reason }` (`hangup`, `rejected`, `timeout`, `busy`, `removed`, `disconnected`, `failed`) | Fin d'appel |
 
 Rooms Socket.IO : `user:<userId>` (toutes les connexions d'un utilisateur, pour les notifications et la sonnerie) et `conv:<conversationId>` (diffusion des messages). Le serveur fait rejoindre les rooms `conv:*` **lui-même**, d'après la base, au handshake : le client ne choisit jamais les rooms qu'il écoute (FR-03). Quand l'appartenance change pendant qu'un membre est connecté, le serveur met ses rooms à jour en direct (§ 5.3).
 
@@ -369,13 +370,13 @@ sequenceDiagram
     B->>S: GET /turn/credentials
     S-->>A: call:accepted
     A->>A: getUserMedia + RTCPeerConnection(iceServers)
-    A->>S: rtc:offer {sdp}
+    A->>S: rtc:offer {callId, to, sdp}
     S-->>B: rtc:offer
-    B->>S: rtc:answer {sdp}
+    B->>S: rtc:answer {callId, to, sdp}
     S-->>A: rtc:answer
-    A->>S: rtc:ice-candidate (en continu)
+    A->>S: rtc:ice-candidate {callId, to, candidate} (en continu)
     S-->>B: rtc:ice-candidate
-    B->>S: rtc:ice-candidate
+    B->>S: rtc:ice-candidate {callId, to, candidate}
     S-->>A: rtc:ice-candidate
     A-->>T: STUN : découverte IP publique
     A-->>B: média SRTP direct (P2P)
