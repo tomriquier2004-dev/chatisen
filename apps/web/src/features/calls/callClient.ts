@@ -55,7 +55,7 @@ export class CallClient {
   private pendingEnded: CallEndedEvent | null = null;
   private disposed = false;
 
-  constructor(options: CallClientOptions = {}) {
+  constructor(options: CallClientOptions) {
     this.runtime = options.runtime ?? browserRuntime;
     this.ackTimeoutMs = options.ackTimeoutMs ?? 10_000;
     this.apiClient = options.api;
