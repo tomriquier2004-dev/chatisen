@@ -68,6 +68,23 @@ export class CallClient {
   get state(): CallState { return this.stateValue; }
   get localStream(): MediaStream | null { return this.localValue; }
   get remoteStream(): MediaStream | null { return this.remoteValue; }
+  get microphoneEnabled(): boolean { return this.localValue?.getAudioTracks().some((track) => track.enabled) ?? false; }
+  get cameraEnabled(): boolean { return this.localValue?.getVideoTracks().some((track) => track.enabled) ?? false; }
+
+  /** Active/désactive les pistes existantes sans renégociation SDP. */
+  setMicrophoneEnabled(enabled: boolean): boolean {
+    const tracks = this.localValue?.getAudioTracks() ?? [];
+    for (const track of tracks) track.enabled = enabled;
+    if (tracks.length) this.notify();
+    return tracks.length > 0;
+  }
+
+  setCameraEnabled(enabled: boolean): boolean {
+    const tracks = this.localValue?.getVideoTracks() ?? [];
+    for (const track of tracks) track.enabled = enabled;
+    if (tracks.length) this.notify();
+    return tracks.length > 0;
+  }
 
   subscribe(listener: (state: CallState) => void): () => void {
     this.listeners.add(listener);
