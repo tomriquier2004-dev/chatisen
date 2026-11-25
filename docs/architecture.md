@@ -445,7 +445,7 @@ flowchart TB
 
 - **Un seul `docker compose up`** démarre l'environnement complet ; les mêmes images servent en dev et en déploiement (NFR-07).
 - coturn tourne de préférence en `network_mode: host` : le NAT de Docker sur une large plage UDP dégrade les performances et complique la configuration.
-- **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne. Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM (accès par tunnel SSH). La vue cible du § 8.3 déplace PostgreSQL chez Supabase, **à confirmer** avec le prof et Tom : elle contredit cette règle et l'ADR-0006.
+- **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne. Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM (accès par tunnel SSH). La vue cible du § 8.3 déplace PostgreSQL vers Cloud SQL pour PostgreSQL ([ADR-0017](adr/0017-base-de-donnees-cloud-sql.md), proposé), sans IP publique : la base reste joignable seulement depuis le VPC, ce qui garde cette règle.
 - **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
 - **Hébergement** : Google Cloud, une VM Compute Engine avec une IP statique ; point d'entrée Caddy sur un seul nom d'hôte ([ADR-0012](adr/0012-deploiement-et-hebergement.md) et [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md), statut « proposé »). Kubernetes (k3s) est suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
@@ -464,7 +464,7 @@ Les images sont taguées avec le SHA du commit ; **un rollback = redéployer le 
 Version du 25 novembre 2026, après la review de Tom. Cette section sert à **transcrire l'architecture en code** : chaque flux a un numéro `Fxx`, une preuve et, en fin de section, le fichier ou la ressource qui le met en œuvre. Deux vues :
 
 - **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
-- **Cible** : load balancer réseau (**retenu par l'équipe**), VM TURN séparée et base sur Supabase (**à confirmer**), copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
+- **Cible** : load balancer réseau qui porte l'IP (**retenu par l'équipe**, consigne du prof), VM TURN séparée (consigne du prof, ADR-0016 à amender), base sur Cloud SQL pour PostgreSQL (**décidée**, ADR-0017), copie des sauvegardes dans un bucket Cloud Storage. Rien n'est à faire avant J1.
 
 `<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
 
@@ -522,7 +522,7 @@ flowchart LR
     API -. "F17 secret HMAC partagé, aucun flux" .- COT
 ```
 
-#### Vue cible : load balancer, VM TURN, Supabase
+#### Vue cible : load balancer, VM TURN, Cloud SQL
 
 ```mermaid
 flowchart LR
@@ -553,14 +553,14 @@ flowchart LR
                 BKP["Sauvegardes<br/>pg_dump + age"]
             end
         end
-        subgraph VT["VM TURN : à confirmer (prof, Tom)"]
+        subgraph VT["VM TURN : consigne du prof, ADR-0016 à amender"]
             COT["coturn<br/>external-ip = IP du load balancer"]
         end
+        subgraph CSQL["Cloud SQL, europe-west1 (ADR-0017)"]
+            PGS[("PostgreSQL 16<br/>IP privée seulement, TLS exigé")]
+        end
+        OFF["Bucket Cloud Storage<br/>copie des sauvegardes (#42)"]
     end
-    subgraph SUP["Supabase (UE) : à confirmer, ADR-0017"]
-        PGS[("PostgreSQL<br/>TLS, mode session")]
-    end
-    OFF["Copie hors de l'hôte<br/>bucket à choisir (#42)"]
     U -- "F00 résolution" --> DNS
     U -- "F01 HTTPS + WSS 443, F02 HTTP 80" --> IP
     U -- "F04 TURN 3478, F05 relais UDP" --> IP
@@ -576,9 +576,9 @@ flowchart LR
     HC -- "F10 sondes" --> VT
     CAD -- "F11 HTTP en clair" --> API
     API -- "F12 en clair" --> RED
-    API -- "F13 PostgreSQL, TLS via Internet" --> PGS
+    API -- "F13 PostgreSQL, TLS, IP privée du VPC" --> PGS
     BKP -- "F14 pg_dump, TLS" --> PGS
-    BKP -. "F21 copie chiffrée age, TLS" .-> OFF
+    BKP -. "F21 copie chiffrée age, API Google" .-> OFF
     MON -- "F16 métriques 9641" --> COT
     ADM -. "F15 tunnel SSH, 127.0.0.1:3000" .-> MON
     API -. "F17 secret HMAC partagé, aucun flux" .- COT
@@ -588,14 +588,14 @@ flowchart LR
     VW -- "F20 pull" --> REG
 ```
 
-#### Deux décisions à confirmer avec le prof et Tom
+#### Base, TURN et point d'entrée : décisions du 25 novembre
 
-| Sujet | Pour (décision de THEO / consigne du prof) | Contre (review de Tom) | Dans les vues |
+| Sujet | Pour (décision de THEO / consigne du prof) | Contre ou risque (review de Tom) | Dans les vues |
 | --- | --- | --- | --- |
-| **Base sur Supabase** (ADR-0017 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
-| **VM TURN séparée** | Le prof : coturn consomme beaucoup et peut geler Caddy ; meilleure scalabilité (la bande passante TURN est le coût qui monte) | L'ADR-0016 met coturn sur la même VM et la même IP ; une VM de plus à créer, durcir et arrêter chaque nuit avant J2 | J1 : coturn sur la VM. Cible : VM TURN |
+| **Base sur Cloud SQL pour PostgreSQL** ([ADR-0017](adr/0017-base-de-donnees-cloud-sql.md), **décidée** par THEO, remplace la piste Supabase) | Consigne du prof : pas de base sur la VM ; reste dans GCP, IP privée dans le VPC (pas d'aller-retour Internet, pas d'exposition publique) ; sauvegardes automatiques et copie dans un bucket (traite #42) ; PostgreSQL standard, Kysely et les migrations ne changent pas | **Payant** (environ 5 $ jusqu'au 11 décembre en `db-f1-micro`, tarifs de région non confirmée, à vérifier) ; pas de SLA en cœur partagé ; accès privé aux services à configurer ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose tant que l'instance n'est pas validée. Cible : Cloud SQL |
+| **VM TURN séparée** (consigne du prof) | Le prof : séparer le flux vers coturn du flux vers Caddy, coturn consomme beaucoup et peut geler Caddy ; meilleure scalabilité (la bande passante TURN est le coût qui monte) | L'ADR-0016 met coturn sur la même VM et la même IP ; une VM de plus à créer, durcir et arrêter chaque nuit avant J2 | J1 : coturn sur la VM. Cible : VM TURN |
 
-Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
+Ces consignes du prof sont consignées dans [`prof-qa.md`](prof-qa.md) (25 novembre 2026). **Point d'entrée** : selon le prof, une VM d'entrée avec sa propre IP externe statique ne sert à rien ; l'IP statique est portée par le load balancer réseau passthrough (TCP et UDP, ADR-0018). Caddy est gardé, car ce load balancer ne termine pas le TLS. Restent à faire : amender l'ADR-0016 pour la VM TURN, et planifier la bascule de la base vers Cloud SQL (ADR-0017, § Décision).
 
 **Load balancer retenu, et ce qu'il coûte.** Tarifs en USD relevés le 25 novembre 2026 sur [cloud.google.com/vpc/network-pricing](https://cloud.google.com/vpc/network-pricing) ; le crédit de l'équipe est en euros. Le tableau des règles de transfert régionales est précédé d'une liste de régions qui inclut Belgium (`europe-west1`) : d'après la page, ces tarifs s'y appliquent (relecture dans un navigateur le 25 novembre 2026). La page ne propose ni abonnement mensuel ni forfait au gigaoctet : le tarif horaire de la règle et le tarif par Gio **s'additionnent**, et c'est la durée d'existence du load balancer qui fait le coût. Durée prise : 16 jours, soit 384 h, jusqu'au 11 décembre.
 
@@ -607,6 +607,7 @@ Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la V
 | IP externe sur une VM standard | 0,005 $/h par IP | environ 1,9 $ par VM |
 | Cloud NAT | 0,0014 $/h par VM (jusqu'à 32) + 0,005 $/h par IP de la passerelle + 0,045 $/Gio traité | environ 3 $ pour 2 VM, plus les données |
 
+- **Base** : Cloud SQL s'ajoute à ces totaux, environ 5 $ sur la même durée en `db-f1-micro` ([ADR-0017](adr/0017-base-de-donnees-cloud-sql.md), tarifs de région non confirmée, à vérifier) ; l'arrêt nocturne de la VM ne l'arrête pas.
 - **Totaux de la vue cible** : load balancer et IP externes sur les deux VM, environ 13 $ ; load balancer et Cloud NAT, environ 13 $ ; sans load balancer, une IP externe par VM, environ 4 $. Ces montants sont faibles devant le crédit de 269 € : le coût ne doit pas décider.
 - **Ils courent aussi VM éteintes** : la règle de transfert est facturée tant qu'elle existe, comme l'IP de la passerelle NAT. La règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé.
 - **Quel type** : le tarif de la règle de transfert est le même pour les load balancers réseau (passthrough et proxy) et d'application externes ; le choix est donc technique. Seul le load balancer réseau **passthrough externe** transmet à la fois le TCP (web) et l'UDP (TURN) sur une même IP ; un load balancer d'application ne traite que le HTTP(S) et un load balancer réseau proxy que le TCP (connaissance générale de GCP, pas lue sur la page de tarifs : à confirmer dans la documentation). Les load balancers internes sont à écarter : le load balancer d'application interne facture au minimum trois instances de proxy à 0,025 $/h chacune, même sans trafic.
@@ -620,9 +621,8 @@ Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la V
 | --- | --- | --- |
 | Internet (non fiable) | navigateurs, admin, DNS du prof, autorité ACME | F00-F08, F10 |
 | GitHub (confiance CI) | CI, registre d'images, secrets des GitHub Environments | F09, F19, F20 |
-| GCP, projet `chatisen` | IP, load balancer (cible), pare-feu VPC, VM, IAP, Cloud NAT | toutes les entrées passent par le pare-feu VPC |
+| GCP, projet `chatisen` | IP (VM en J1, load balancer en cible), pare-feu VPC, VM, IAP, Cloud NAT ; en cible Cloud SQL (IP privée seulement) et bucket Cloud Storage | toutes les entrées passent par le pare-feu VPC ; F13, F14 et F21 restent dans GCP |
 | Réseau Docker de la VM | Caddy, API, Redis, PostgreSQL (J1), sauvegardes, supervision | F11-F14 en clair : seul Caddy publie des ports |
-| Supabase (cible) | PostgreSQL | F13, F14 en TLS à travers Internet |
 
 Ces flux servent tels quels à l'atelier STRIDE (#27).
 
@@ -649,15 +649,15 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F11 | les deux | Caddy | API (`api:3000`) | 3000/tcp | HTTP, réseau Docker | **aucun** | proposé | `Test-NetConnection <IP> -Port 3000` : bloqué depuis Internet | ADR-0016, `infra/caddy/Caddyfile` |
 | F12 | les deux | API | Redis | 6379/tcp | RESP, réseau Docker | **aucun** | existant (code), déploiement proposé | port non publié (`docker compose ps`) | ADR-0006, `apps/api/src/config.ts` |
 | F13 | J1 | API | PostgreSQL (Compose) | 5432/tcp | PostgreSQL, réseau Docker | **aucun** | **à confirmer** (voir plus haut) | port non publié (`docker compose ps`) | ADR-0006 |
-| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0017 (brouillon) |
-| F14 | les deux | postgres-backup | PostgreSQL (J1 : local ; cible : Supabase) | 5432/tcp | `pg_dump` | fichier chiffré age (+ TLS en cible) | existant (script) | `infra/backup/restore-test.sh` | #9, #31, `infra/backup/` |
+| F13 | cible | API | Cloud SQL pour PostgreSQL, IP privée | 5432/tcp | PostgreSQL, dans le VPC | TLS exigé par l'instance | proposé | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` ; 5432 injoignable depuis Internet | [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) |
+| F14 | les deux | postgres-backup | PostgreSQL (J1 : local ; cible : Cloud SQL, IP privée) | 5432/tcp | `pg_dump` | fichier chiffré age (+ TLS en cible) | existant (script) ; en cible, s'ajoute aux sauvegardes automatiques de Cloud SQL | `infra/backup/restore-test.sh` ; en cible, restauration d'une sauvegarde automatique sur une instance de test | #9, #31, `infra/backup/`, [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) |
 | F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
 | F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
 | F17 | les deux | API | coturn | — | aucun flux : secret HMAC partagé | — | proposé | identifiants refusés après expiration | architecture § 6.4 |
-| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) ; IP externes recommandées, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
+| F18 | cible | VM web et VM TURN | Internet (registre, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) ; IP externes recommandées, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
 | F19 | les deux | CI (GitHub Actions) | Registre d'images | 443/tcp | HTTPS (push d'images API et client) | TLS | à trancher : registre non choisi | image taguée par SHA dans le registre | ADR-0012, #12, `ci.yml` (commentaire « push registry ») |
 | F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
-| F21 | cible (manquant en J1) | postgres-backup | stockage hors de l'hôte (bucket à choisir) | 443/tcp | HTTPS | TLS + fichier chiffré age | **manquant** | restauration depuis la copie distante | #42 |
+| F21 | cible (manquant en J1) | postgres-backup (recommandé) ou export Cloud SQL | bucket Cloud Storage du projet | 443/tcp | HTTPS (API Google) | TLS + fichier chiffré age (si `postgres-backup`) | **manquant** | restauration depuis le bucket | #42, [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) |
 
 Le client statique ne crée pas de flux réseau : il est construit par la CI (image ou artefact, à trancher dans #12) et servi par Caddy depuis `/srv/web`. Les secrets de production viennent des GitHub Environments et d'un `.env` hors dépôt sur la VM (`chmod 600`, ADR-0012 § 6).
 
@@ -677,7 +677,7 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 | --- | --- | --- |
 | Une seule VM | tout est indisponible | assumé : NFR-02 et NFR-03 sont traitées par la mesure d'une instance, pas par la redondance (ADR-0012) |
 | Redis seul, sans persistance | sessions temps réel et rate limit perdus, rien de durable (ADR-0006) | redémarrage ; Redis managé en évolution |
-| PostgreSQL sur la VM | perte de la VM = perte des données depuis la dernière copie | copie hors hôte (#42), manquante |
+| PostgreSQL sur la VM | perte de la VM = perte des données depuis la dernière copie | copie hors hôte (#42), manquante ; en cible, Cloud SQL (ADR-0017), zonal et sans SLA en cœur partagé : assumé |
 | Arrêt automatique à minuit (`arret-nuit-minuit`) | ni service, ni sauvegardes, ni métriques la nuit | à suspendre pendant les mesures et répétitions (ADR-0012) |
 | Supervision sur la même VM | tombe avec ce qu'elle surveille | évolution : la sortir de la VM |
 
@@ -685,12 +685,12 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 
 - **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
 - ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
-- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt. L'[ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) (load balancer et Terraform) est rédigé, statut « proposé ».
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'[ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) (base sur Cloud SQL) est rédigé, statut « proposé ». L'[ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) (load balancer et Terraform) est rédigé, statut « proposé ». L'ADR-0012 et l'ADR-0018 mentionnent encore Supabase : à aligner par leurs auteurs.
 
 #### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
 
 1. **Plusieurs instances d'API** : elles sont sans état et l'adapter Redis est testé sur deux instances. Trancher l'ADR-0011 ; deux conteneurs sur la même VM suffisent pour une démonstration, mesurée avec k6 (#24).
-2. **Base** : le compteur `last_seq` sérialise les envois d'une même conversation. Avec Supabase ou plusieurs API, la taille des pools multipliée par le nombre d'instances doit rester sous la limite du pooler. Plus tard, un réplica de lecture pour l'historique.
+2. **Base** : le compteur `last_seq` sérialise les envois d'une même conversation. Avec Cloud SQL et plusieurs API, la taille des pools multipliée par le nombre d'instances doit rester sous `max_connections` de l'instance, faible en `db-f1-micro` (à relever, ADR-0017). Plus tard, un réplica de lecture pour l'historique.
 3. **Redis** : managé ou répliqué, et adapter Socket.IO à base de streams (récupération d'état après coupure).
 4. **TURN** : VM dédiée (cible), puis plusieurs serveurs avec le même secret HMAC ; un SFU pour les conférences (suspendu).
 5. **Observabilité hors de la VM applicative** ; le générateur de charge tourne déjà hors de l'hôte testé (ADR-0012).
@@ -709,7 +709,7 @@ Les ressources GCP sont décrites en **Terraform**, dans `infra/terraform/` (à 
 | F10 | règle de pare-feu des sondes de santé, vérification de santé et service de backend du load balancer (cible) |
 | F11-F13 (J1) | `infra/compose/` : seul Caddy publie des ports |
 | F04-F06, F16 | `infra/coturn/turnserver.conf` (ports, `external-ip`, plage de relais, métriques) |
-| F13-F14, F21 | `DATABASE_URL`, `infra/backup/compose.yml`, cible de copie (#42) |
+| F13-F14, F21 | `DATABASE_URL`, `infra/backup/compose.yml` ; en cible, instance Cloud SQL (IP privée, accès privé aux services) et bucket Cloud Storage (#42) |
 | F09, F19-F20 | `.github/workflows/deploy.yml` (#12), images par digest (#43) |
 
 ---
@@ -807,5 +807,5 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0014](adr/0014-release-please.md) | Versionnement et releases avec release-please | proposé, rédigé |
 | ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
-| ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
+| [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) | Base de données sur Cloud SQL pour PostgreSQL (hors de la VM) | proposé, rédigé |
 | [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
