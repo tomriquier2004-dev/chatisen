@@ -230,7 +230,7 @@ Pas encore là (issue #12) : Dockerfiles de l'API et du client, Compose de dépl
 
 ## Coturn sur une VM dédiée
 
-Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0017](../docs/adr/0017-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
+Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0018](../docs/adr/0018-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
 
 La configuration reproductible, le fichier de paramètres et les étapes de test sont dans [`infra/coturn/`](coturn/README.md). Elle épingle `coturn/coturn:4.6.2`, utilise le secret TURN REST hors dépôt, UDP/TCP 3478 et UDP 49152-49252. La métrique coturn est servie sur 9641 uniquement sur le réseau privé de supervision et en loopback sur la VM.
 
