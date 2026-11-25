@@ -50,7 +50,7 @@ export async function callRoutes(app: FastifyInstance, opts: CallRoutesOptions):
       const now = Date.now();
       const values = samples.map((sample) => {
         const observedAt = Date.parse(sample.observedAt);
-        const hasTimezone = /(?:Z|[+-]\\d{2}:\\d{2})$/i.test(sample.observedAt);
+        const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(sample.observedAt);
         if (!hasTimezone || !Number.isFinite(observedAt) || observedAt > now + 30_000 || observedAt < now - 10 * 60_000) {
           throw new AppError(400, "VALIDATION_FAILED", "Horodatage de mesure invalide ou trop ancien");
         }
