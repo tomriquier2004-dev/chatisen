@@ -227,3 +227,47 @@ puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à 
 | `github/` | Rulesets du dépôt décrits en code |
 
 Pas encore là (issue #12) : Dockerfiles de l'API et du client, Compose de déploiement, coturn, Prometheus et Grafana, workflow de déploiement.
+
+## Coturn sur une VM dédiée
+
+Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0017](../docs/adr/0017-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
+
+La configuration reproductible, le fichier de paramètres et les étapes de test sont dans [`infra/coturn/`](coturn/README.md). Elle épingle `coturn/coturn:4.6.2`, utilise le secret TURN REST hors dépôt, UDP/TCP 3478 et UDP 49152-49252. La métrique coturn est servie sur 9641 uniquement sur le réseau privé de supervision et en loopback sur la VM.
+
+## Prometheus et Grafana
+
+La stack de supervision est versionnée dans [`infra/observability/`](observability/compose.yml). Elle comprend Prometheus, Grafana provisionné, le tableau de bord `ChatISEN — appels et TURN` et les alertes `CoturnUnavailable` et `CallNegotiationFailureRateHigh`.
+
+Préparer le réseau privé et la stack :
+
+```bash
+sudo docker network create chatisen-observability
+cd infra/observability
+cp .env.example .env
+openssl rand -base64 36  # mot de passe Grafana
+chmod 600 .env
+# Renseigner GRAFANA_ADMIN_PASSWORD dans .env
+sudo docker compose --env-file .env -f compose.yml up -d
+```
+
+Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. Le service coturn rejoint ce réseau via `infra/coturn/compose.yml` et expose `coturn:9641/metrics`. Ne pas publier le port 9641 sur une interface publique.
+
+Accès opérateur par tunnel SSH, sans ouvrir de port public :
+
+```bash
+ssh -L 9090:127.0.0.1:9090 -L 3001:127.0.0.1:3001 <utilisateur>@<vm>
+```
+
+Puis ouvrir Prometheus sur `http://127.0.0.1:9090` et Grafana sur `http://127.0.0.1:3001`.
+
+### Test de l'alerte coturn
+
+Après déploiement et validation de la cible `coturn` dans Prometheus, arrêter temporairement le conteneur TURN pendant plus d'une minute dans une fenêtre de test :
+
+```bash
+sudo docker stop chatisen-coturn
+# Vérifier l'état firing de CoturnUnavailable dans Prometheus / Grafana.
+sudo docker start chatisen-coturn
+```
+
+Le test doit être réalisé en dehors d'un appel réel. Consigner la date, le temps de détection et le retour à l'état normal dans `docs/reports/`. Il n'a pas été exécuté depuis cette session : aucune VM TURN dédiée ni aucun destinataire d'alerte opérationnel n'est encore configuré.
