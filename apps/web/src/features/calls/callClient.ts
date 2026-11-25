@@ -161,6 +161,9 @@ export class CallClient {
     const callId = "callId" in this.stateValue ? this.stateValue.callId : null;
     if (callId) {
       try {
+        // Envoie le dernier lot tant que l'appel et le participant sont encore actifs côté API.
+        await this.quality?.stop();
+        this.quality = null;
         const ack = await this.emitAck<{ callId: string }>("call:hangup", { callId });
         this.assertAck(ack);
       } finally {
