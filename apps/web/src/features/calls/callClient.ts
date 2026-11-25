@@ -5,6 +5,8 @@ import {
   type CallIncomingEvent,
   type CallInviteAck,
   type CallMedia,
+  type CallMediaStateEvent,
+  type CallMediaStatePayload,
   type CallEndedEvent,
   type RtcDescriptionEvent,
   type RtcIceCandidateEvent,
@@ -45,6 +47,7 @@ export class CallClient {
   private readonly socket: ChatSocket;
   private localValue: MediaStream | null = null;
   private remoteValue: MediaStream | null = null;
+  private remoteCameraEnabledValue = true;
   private peer: RTCPeerConnection | null = null;
   private quality: CallQualityCollector | null = null;
   private pendingIce: RTCIceCandidateInit[] = [];
@@ -60,6 +63,7 @@ export class CallClient {
     this.socket.on("call:incoming", this.onIncoming);
     this.socket.on("call:accepted", this.onAccepted);
     this.socket.on("call:ended", this.onEnded);
+    this.socket.on("call:media-state", this.onMediaState);
     this.socket.on("rtc:offer", this.onOffer);
     this.socket.on("rtc:answer", this.onAnswer);
     this.socket.on("rtc:ice-candidate", this.onCandidate);
@@ -68,6 +72,7 @@ export class CallClient {
   get state(): CallState { return this.stateValue; }
   get localStream(): MediaStream | null { return this.localValue; }
   get remoteStream(): MediaStream | null { return this.remoteValue; }
+  get remoteCameraEnabled(): boolean { return this.remoteCameraEnabledValue; }
   get microphoneEnabled(): boolean { return this.localValue?.getAudioTracks().some((track) => track.enabled) ?? false; }
   get cameraEnabled(): boolean { return this.localValue?.getVideoTracks().some((track) => track.enabled) ?? false; }
 
@@ -82,7 +87,14 @@ export class CallClient {
   setCameraEnabled(enabled: boolean): boolean {
     const tracks = this.localValue?.getVideoTracks() ?? [];
     for (const track of tracks) track.enabled = enabled;
-    if (tracks.length) this.notify();
+    if (tracks.length) {
+      this.notify();
+      const state = this.stateValue;
+      if ((state.status === "connecting" || state.status === "connected") && state.callId) {
+        const payload: CallMediaStatePayload = { callId: state.callId, to: state.peerId, cameraEnabled: enabled };
+        void this.emitAck<{ relayed: true }>("call:media-state", payload).catch(() => undefined);
+      }
+    }
     return tracks.length > 0;
   }
 
@@ -172,6 +184,7 @@ export class CallClient {
     this.socket.off("call:incoming", this.onIncoming);
     this.socket.off("call:accepted", this.onAccepted);
     this.socket.off("call:ended", this.onEnded);
+    this.socket.off("call:media-state", this.onMediaState);
     this.socket.off("rtc:offer", this.onOffer);
     this.socket.off("rtc:answer", this.onAnswer);
     this.socket.off("rtc:ice-candidate", this.onCandidate);
@@ -242,6 +255,7 @@ export class CallClient {
   private readonly onIncoming = (event: CallIncomingEvent): void => {
     if (this.stateValue.status !== "idle" && this.stateValue.status !== "ended") return;
     this.pendingIce = [];
+    this.remoteCameraEnabledValue = true;
     this.dispatch({ type: "incoming", callId: event.callId, conversationId: event.conversationId, peerId: event.from, media: event.media });
   };
 
@@ -253,6 +267,13 @@ export class CallClient {
     if (this.stateValue.status === "outgoing" && this.stateValue.callId === event.callId) {
       void this.startOutgoingPeerConnection();
     }
+  };
+
+  private readonly onMediaState = (event: CallMediaStateEvent): void => {
+    if (!("callId" in this.stateValue) || this.stateValue.callId !== event.callId) return;
+    if (!("peerId" in this.stateValue) || this.stateValue.peerId !== event.from) return;
+    this.remoteCameraEnabledValue = event.cameraEnabled;
+    this.notify();
   };
 
   private readonly onEnded = (event: CallEndedEvent): void => {
@@ -355,6 +376,7 @@ export class CallClient {
     for (const track of this.localValue?.getTracks() ?? []) track.stop();
     this.localValue = null;
     this.remoteValue = null;
+    this.remoteCameraEnabledValue = true;
     this.pendingIce = [];
     this.pendingAccepted = null;
     this.pendingEnded = null;
