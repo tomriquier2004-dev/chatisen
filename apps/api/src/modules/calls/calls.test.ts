@@ -72,7 +72,7 @@ const sample = {
 describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   it("enregistre les mesures sous l'identité authentifiée", async () => {
     const alice = await createUser(t.app, "quality-alice");
-    const bob = await registerUser(t.app, "quality-bob");
+    const bob = await createUser(t.app, "quality-bob");
     const callId = await createCall(alice, bob);
 
     const res = await as(alice)(callId, { samples: [sample, { ...sample, candidateType: "host" }] });
@@ -90,9 +90,9 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   });
 
   it("refuse un membre de la conversation qui ne participe pas à cet appel", async () => {
-    const alice = await registerUser(t.app, "quality-owner");
-    const bob = await registerUser(t.app, "quality-peer");
-    const carol = await registerUser(t.app, "quality-member");
+    const alice = await createUser(t.app, "quality-owner");
+    const bob = await createUser(t.app, "quality-peer");
+    const carol = await createUser(t.app, "quality-member");
     const callId = await createCall(alice, bob, carol);
 
     const res = await as(carol)(callId, { samples: [sample] });
@@ -107,9 +107,9 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   });
 
   it("refuse un utilisateur extérieur à l'appel", async () => {
-    const alice = await registerUser(t.app, "quality-a");
-    const bob = await registerUser(t.app, "quality-b");
-    const outsider = await registerUser(t.app, "quality-outsider");
+    const alice = await createUser(t.app, "quality-a");
+    const bob = await createUser(t.app, "quality-b");
+    const outsider = await createUser(t.app, "quality-outsider");
     const callId = await createCall(alice, bob);
 
     expect((await as(outsider)(callId, { samples: [sample] })).statusCode).toBe(403);
@@ -129,8 +129,8 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   });
 
   it("n'accepte pas de userId fourni par le client", async () => {
-    const alice = await registerUser(t.app, "quality-spoof");
-    const bob = await registerUser(t.app, "quality-peer");
+    const alice = await createUser(t.app, "quality-spoof");
+    const bob = await createUser(t.app, "quality-peer");
     const callId = await createCall(alice, bob);
 
     const res = await as(alice)(callId, { userId: bob.user.id, samples: [sample] });
@@ -138,8 +138,8 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   });
 
   it("borne la taille du lot et valide les valeurs", async () => {
-    const alice = await registerUser(t.app, "quality-bounds");
-    const bob = await registerUser(t.app, "quality-peer");
+    const alice = await createUser(t.app, "quality-bounds");
+    const bob = await createUser(t.app, "quality-peer");
     const callId = await createCall(alice, bob);
 
     expect((await as(alice)(callId, { samples: Array.from({ length: 61 }, () => sample) })).statusCode).toBe(400);
@@ -147,8 +147,8 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
   });
 
   it("limite la fréquence des lots par utilisateur", async () => {
-    const alice = await registerUser(t.app, "quality-rate");
-    const bob = await registerUser(t.app, "quality-peer");
+    const alice = await createUser(t.app, "quality-rate");
+    const bob = await createUser(t.app, "quality-peer");
     const callId = await createCall(alice, bob);
 
     for (let i = 0; i < 30; i++) {
