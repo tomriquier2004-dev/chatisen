@@ -44,6 +44,10 @@ export class Realtime {
       path: "/socket.io",
       autoConnect: false,
       transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 2_000,
       auth: (cb) => {
         void api.accessToken().then((token) => cb(token ? { token } : {}));
       },
