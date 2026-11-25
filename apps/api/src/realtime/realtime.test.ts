@@ -310,6 +310,13 @@ describe("appels 1-1 et signalisation WebRTC", () => {
     expect(accept).toEqual({ ok: true, data: { callId } });
     expect(await accepted).toEqual({ callId, userId: bob.user.id } satisfies CallAcceptedEvent);
 
+    const cameraState = nextEvent(bobSocket, "call:media-state");
+    const cameraAck = (await aliceSocket.timeout(2000).emitWithAck("call:media-state", {
+      callId, to: bob.user.id, cameraEnabled: false,
+    })) as CallAck<{ relayed: true }>;
+    expect(cameraAck.ok).toBe(true);
+    expect(await cameraState).toEqual({ callId, from: alice.user.id, cameraEnabled: false });
+
     const offer = nextEvent(bobSocket, "rtc:offer");
     const offerAck = (await aliceSocket.timeout(2000).emitWithAck("rtc:offer", { callId, to: bob.user.id, sdp: "v=0" })) as CallAck<{ relayed: true }>;
     expect(offerAck).toEqual({ ok: true, data: { relayed: true } });
