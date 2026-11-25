@@ -6,11 +6,10 @@ import styles from "./CallOverlay.module.css";
 
 export interface CallOverlayProps {
   conversations: ConversationView[];
-  meId: string;
 }
 
 /** Overlay global : sonnerie entrante visible même si l'utilisateur consulte un autre écran. */
-export function CallOverlay({ conversations, meId }: CallOverlayProps) {
+export function CallOverlay({ conversations }: CallOverlayProps) {
   const [state, setState] = useState<CallState>(calls.state);
   const acceptRef = useRef<HTMLButtonElement>(null);
   const localVideo = useRef<HTMLVideoElement>(null);
