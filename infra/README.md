@@ -12,7 +12,7 @@ Mode d'emploi de l'hôte de déploiement et du contenu de `infra/`. Décisions :
 | Nom de domaine | `dc-ops.isen.fedyna.fr` (un seul nom, pas de sous-domaine) |
 | Étiquette réseau | `chatisen` (les règles de pare-feu applicatives ciblent cette étiquette) |
 
-**La VM est éteinte par défaut.** On l'allume pour travailler et on l'éteint ensuite : un calendrier d'instance l'arrête aussi chaque nuit à 00h00 (Paris). Éteinte, elle ne coûte que son disque et son IP.
+**La VM est éteinte par défaut.** On l'allume pour travailler et on l'éteint ensuite : un calendrier d'instance l'arrête aussi chaque nuit à 00h00 (Paris). Éteinte, elle ne coûte que son disque et son IP. Cette règle vaut pour la vue J1 : le load balancer de la vue cible, une fois créé, est facturé tant qu'il existe, VM éteintes ou non (voir [`architecture.md`](../docs/architecture.md) § 8.3 et l'[ADR-0018](../docs/adr/0018-terraform-et-load-balancer-gcp.md)).
 
 ## Obtenir l'accès (une seule fois)
 
@@ -68,7 +68,7 @@ Sur la VM, les commandes Docker de ce document s'écrivent avec `sudo` (`sudo do
 
 - **Lire le crédit restant** : console Google Cloud, Facturation, vue d'ensemble : la carte « Welcome credit » affiche le crédit restant et les jours restants. Une alerte de budget prévient par e-mail aux seuils de 25, 50, 75 et 90 % de 135 € ; elle ne coupe rien.
 - **Ne jamais cliquer sur « Mettre à niveau »** : le compte reste en essai gratuit, rien n'est facturé tant qu'on ne passe pas à un compte payant (indication de la console).
-- **Éteinte, la VM coûte encore** son disque et son IP statique, sur le crédit. L'arrêt économise le calcul seulement.
+- **Éteinte, la VM coûte encore** son disque et son IP statique, sur le crédit. L'arrêt économise le calcul seulement. Le load balancer de la vue cible, lui, est facturé tant qu'il existe (0,025 $ par heure d'après la page de tarifs de GCP, à confirmer dans le calculateur).
 - **Arrêt automatique de 00h00** : il a été configuré par Sha et reste à vérifier le premier soir (ADR-0012). Pour une séance qui dépasse minuit (mesures, répétition de démo), suspendre le calendrier d'instance dans la console avant la séance (Compute Engine, calendriers d'instance : l'intitulé exact est à vérifier), puis le réactiver. Après un arrêt automatique, rallumer la VM à la main.
 - Une VM éteinte ne fait ni sauvegarde, ni collecte de métriques, ni déploiement : l'allumer avant toute séance de mesure ou de déploiement.
 
@@ -90,8 +90,9 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
 | 3389 | TCP | _supprimée le 25/11/2026_ | RDP | fermé |
+| 9641 | TCP | `chatisen-turn-metrics` (à créer pour la vue cible) | Prometheus → coturn `/metrics` | VPC privé, source limitée à la VM web ; J1 reste sur le réseau Docker |
 
-Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki. Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
+Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki et les métriques coturn (9641, privées uniquement). Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
 
 ## Restreindre le SSH avec IAP (à faire, VM allumée pour tester)
 
@@ -232,9 +233,9 @@ Restent à finaliser : workflow de déploiement applicatif, provisionnement de l
 
 ## Coturn sur une VM dédiée
 
-Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0018](../docs/adr/0018-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
+Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0019](../docs/adr/0019-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
 
-La configuration reproductible, le fichier de paramètres et les étapes de test sont dans [`infra/coturn/`](coturn/README.md). Elle épingle `coturn/coturn:4.6.2`, utilise le secret TURN REST hors dépôt, UDP/TCP 3478 et UDP 49152-49252. La métrique coturn est servie sur 9641 uniquement sur le réseau privé de supervision et en loopback sur la VM.
+La configuration reproductible, le fichier de paramètres et les étapes de test sont dans [`infra/coturn/`](coturn/README.md). Elle épingle `coturn/coturn:4.6.2`, utilise le secret TURN REST hors dépôt, UDP/TCP 3478 et UDP 49152-49252. En J1 (une VM), Prometheus joint coturn par l'alias Docker `coturn:9641` ; le port publié sur l'hôte reste lié à `127.0.0.1`. Dans la vue cible (VM TURN séparée), `TURN_METRICS_BIND_IP` doit être l'IP privée de la VM TURN : le port `9641/tcp` est joignable depuis la VM web uniquement, via le VPC. Il ne doit jamais être publié sur une IP publique.
 
 ## Prometheus et Grafana
 
@@ -246,21 +247,22 @@ Préparer le réseau privé et la stack :
 sudo docker network create chatisen-observability
 cd infra/observability
 cp .env.example .env
+cp targets/coturn.yml.example targets/coturn.yml  # J1: coturn:9641 ; J2: remplacer par <IP_PRIVEE_VM_TURN>:9641
 openssl rand -base64 36  # mot de passe Grafana
 chmod 600 .env
 # Renseigner GRAFANA_ADMIN_PASSWORD dans .env
 sudo docker compose --env-file .env -f compose.yml up -d
 ```
 
-Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. Le service coturn rejoint ce réseau via `infra/coturn/compose.yml` et expose `coturn:9641/metrics`. Ne pas publier le port 9641 sur une interface publique.
+Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
 
 Accès opérateur par tunnel SSH, sans ouvrir de port public :
 
 ```bash
-ssh -L 9090:127.0.0.1:9090 -L 3001:127.0.0.1:3001 <utilisateur>@<vm>
+ssh -L 9090:127.0.0.1:9090 -L 3000:127.0.0.1:3000 <utilisateur>@<vm>
 ```
 
-Puis ouvrir Prometheus sur `http://127.0.0.1:9090` et Grafana sur `http://127.0.0.1:3001`.
+Puis ouvrir Prometheus sur `http://127.0.0.1:9090` et Grafana sur `http://127.0.0.1:3000`.
 
 ### Test de l'alerte coturn
 
@@ -288,7 +290,7 @@ Le test doit être réalisé en dehors d'un appel réel. Consigner la date, le t
 4. Si le processus est bloqué, recréer le service :
    ```bash
    sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml up -d --force-recreate coturn
-   curl --fail http://127.0.0.1:9641/metrics
+   curl --fail http://<IP_PRIVEE_VM_TURN>:9641/metrics
    ```
 5. Valider un nouvel appel depuis deux réseaux distincts et vérifier `candidateType=relay` dans `getStats()`. Ne pas basculer TURN sur 443 : ce port reste réservé à Caddy.
 

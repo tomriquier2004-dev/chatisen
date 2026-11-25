@@ -388,7 +388,7 @@ sequenceDiagram
 ```
 
 - **Identifiants TURN éphémères** : coturn en mode `use-auth-secret` ; l'API génère `username = <expiration>:<userId>` et `credential = HMAC-SHA1(secret, username)`, avec une durée de vie courte. Aucun mot de passe TURN statique n'est exposé au client.
-- coturn est isolé sur une **VM dédiée** avec IP publique statique (proposition ADR-0018 en attente de validation infra / encadrant). Il écoute en **UDP/TCP 3478** et relaie sur **UDP 49152-49252**. Pas de TURN/TLS sur 443 (réservé à Caddy) ni sur 5349 pour le premier jalon ; un réseau qui filtre UDP peut donc empêcher le relais (risque R4).
+- coturn écoute en **UDP 3478 et TCP 3478**, avec une plage de relais UDP **49152-49252** ([ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) § 5). Il n'y a **pas de TURN sur TLS 443** : Caddy occupe ce port, et le TLS sur 5349 n'est pas retenu pour la première version (le média WebRTC reste chiffré par DTLS-SRTP, mais les messages TURN eux-mêmes ne le sont pas). Un réseau qui ne laisse passer que le 443 bloquera donc les appels relayés : c'est le risque R4, à mesurer depuis le réseau de la salle de démo.
 - **Micro / caméra** (FR-11) : activation / désactivation via `track.enabled`, sans renégociation. **Partage d'écran** (FR-15) : `getDisplayMedia()` puis `RTCRtpSender.replaceTrack()` sur la piste vidéo, sans renégociation non plus.
 
 ---
@@ -412,9 +412,10 @@ Proposition : **mesh limité à 3-4 participants**, avec une limite **mesurée**
 
 ```mermaid
 flowchart TB
-    subgraph AppHost["VM applicative"]
+    subgraph Host["Hôte (VM)"]
         subgraph Public["Ports publics"]
             CADDY["caddy<br/>:443 / :80"]
+            COTURN["coturn<br/>3478 UDP/TCP<br/>+ plage relais UDP 49152-49252"]
         end
         subgraph Internal["Réseau interne Docker"]
             API["api (N instances)<br/>:3000"]
@@ -427,9 +428,6 @@ flowchart TB
             GRAF["grafana"]
             EXP["exporters<br/>postgres, redis, cAdvisor"]
         end
-    end
-    subgraph TurnHost["VM coturn dédiée (IP statique)"]
-        COTURN["coturn<br/>3478 UDP/TCP<br/>49152-49252 UDP"]
     end
     CADDY --> API
     ADM["Admin"] -. "tunnel SSH, 127.0.0.1:3000" .-> GRAF
@@ -445,12 +443,12 @@ flowchart TB
     GRAF --> LOKI
 ```
 
-- La VM applicative et la VM coturn sont deux hôtes distincts ; les stacks Compose sont démarrées séparément. `infra/coturn/compose.yml` fixe l'adresse privée du conteneur et configure la traduction IP publique/privée. Cette topologie est proposée dans l'ADR-0018 et doit être validée avant déploiement.
-- La stack de supervision est indépendante (`infra/observability/compose.yml`) et rejoint le réseau Docker privé `chatisen-observability` pour scruter l'API et coturn ; ses interfaces Prometheus/Grafana restent liées à `127.0.0.1`.
+- **Un seul `docker compose up`** démarre l'environnement complet ; les mêmes images servent en dev et en déploiement (NFR-07).
+- coturn tourne de préférence en `network_mode: host` : le NAT de Docker sur une large plage UDP dégrade les performances et complique la configuration.
 - **Postgres et Redis ne sont jamais exposés publiquement.** `/metrics` n'est accessible que depuis le réseau interne. Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM (accès par tunnel SSH). La vue cible du § 8.3 déplace PostgreSQL chez Supabase, **à confirmer** avec le prof et Tom : elle contredit cette règle et l'ADR-0006.
 - **Sauvegardes** ([`infra/backup/`](../infra/backup/), issue #9) : le service `postgres-backup` fait un `pg_dump` toutes les 6 h, chiffré avec la **clé publique** age de l'équipe (la clé privée n'est jamais sur le serveur), dans le volume `pg-backups`, distinct de `pg-data`. Rétention 7 jours. RPO = 6 h. La restauration est testée automatiquement chaque semaine et à chaque changement de `infra/backup/` ; procédure et RTO mesuré dans le [runbook](report/12-monitoring-evaluation-operationnelle.md#runbook--sauvegarde-et-restauration-de-postgresql). La copie hors de l'hôte dépend du choix d'hébergement.
 - **Plusieurs instances d'API** : l'adapter Redis gère la diffusion entre instances. Socket.IO exige des **sticky sessions** si le transport *long-polling* est utilisé ; deux options, à trancher par ADR : affinité dans le reverse proxy, ou transport `websocket` seul (plus simple, perd le repli HTTP).
-- **Hébergement** : la VM applicative GCP est documentée dans l'ADR-0012 ; le fournisseur et le coût de la VM coturn dédiée restent à confirmer avec l'encadrant et l'infra (ADR-0018, question ouverte dans [`prof-qa.md`](prof-qa.md)). Kubernetes (k3s) reste suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
+- **Hébergement** : Google Cloud, une VM Compute Engine avec une IP statique ; point d'entrée Caddy sur un seul nom d'hôte ([ADR-0012](adr/0012-deploiement-et-hebergement.md) et [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md), statut « proposé »). Kubernetes (k3s) est suspendu par le planning ; le détail des flux, des ports et des chiffrements est en § 8.3.
 
 ### 8.2 Chaîne CI/CD
 
@@ -466,7 +464,7 @@ Les images sont taguées avec le SHA du commit ; **un rollback = redéployer le 
 Version du 25 novembre 2026, après la review de Tom. Cette section sert à **transcrire l'architecture en code** : chaque flux a un numéro `Fxx`, une preuve et, en fin de section, le fichier ou la ressource qui le met en œuvre. Deux vues :
 
 - **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
-- **Cible** : load balancer réseau, VM TURN séparée, base sur Supabase, copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
+- **Cible** : load balancer réseau (**retenu par l'équipe**), VM TURN séparée et base sur Supabase (**à confirmer**), copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
 
 `<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
 
@@ -541,9 +539,9 @@ flowchart LR
     end
     subgraph GCP["Google Cloud, projet chatisen"]
         IP["IP statique chatisen-ip"]
-        LB["Load balancer réseau<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
+        LB["Load balancer réseau (retenu)<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
         IAP["IAP 35.235.240.0/20<br/>SSH et déploiement"]
-        NAT["Cloud NAT<br/>sortie des VM (F18)"]
+        NAT["Cloud NAT ou IP externes<br/>sortie des VM (F18, à trancher)"]
         FW["Pare-feu VPC<br/>chatisen-web, chatisen-turn, chatisen-ssh-iap<br/>default-allow-ssh supprimée"]
         subgraph VW["VM web"]
             SSHD["sshd :22<br/>OS Login"]
@@ -559,7 +557,7 @@ flowchart LR
             COT["coturn<br/>external-ip = IP du load balancer"]
         end
     end
-    subgraph SUP["Supabase (UE) : à confirmer, ADR-0018"]
+    subgraph SUP["Supabase (UE) : à confirmer, ADR-0017"]
         PGS[("PostgreSQL<br/>TLS, mode session")]
     end
     OFF["Copie hors de l'hôte<br/>bucket à choisir (#42)"]
@@ -594,12 +592,27 @@ flowchart LR
 
 | Sujet | Pour (décision de THEO / consigne du prof) | Contre (review de Tom) | Dans les vues |
 | --- | --- | --- | --- |
-| **Base sur Supabase** (ADR-0018 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
+| **Base sur Supabase** (ADR-0017 brouillon) | Le prof a dit que la base ne doit pas être sur la VM GCP ; les données survivent à la perte de la VM (traite en partie #42) | Contredit l'ADR-0006 et l'architecture (« jamais exposé publiquement ») ; un aller-retour Internet par requête ; limites et mise en pause de l'offre gratuite (non vérifiées) ; sauvegardes (#31) à revalider via le pooler ; changer l'hébergement de la base à deux jours de J1 est risqué | J1 : PostgreSQL dans le Compose. Cible : Supabase |
 | **VM TURN séparée** | Le prof : coturn consomme beaucoup et peut geler Caddy ; meilleure scalabilité (la bande passante TURN est le coût qui monte) | L'ADR-0016 met coturn sur la même VM et la même IP ; une VM de plus à créer, durcir et arrêter chaque nuit avant J2 | J1 : coturn sur la VM. Cible : VM TURN |
 
 Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
 
-**Coût de la vue cible** : le load balancer et Cloud NAT sont facturés à l'heure, y compris quand les VM sont éteintes (à vérifier dans le calculateur de prix GCP). Une alternative sans load balancer : donner à la VM TURN sa propre IP statique et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof), et laisser une IP externe aux deux VM pour se passer de Cloud NAT.
+**Load balancer retenu, et ce qu'il coûte.** Tarifs en USD relevés le 25 novembre 2026 sur [cloud.google.com/vpc/network-pricing](https://cloud.google.com/vpc/network-pricing) ; le crédit de l'équipe est en euros. Le tableau des règles de transfert régionales est précédé d'une liste de régions qui inclut Belgium (`europe-west1`) : d'après la page, ces tarifs s'y appliquent (relecture dans un navigateur le 25 novembre 2026). La page ne propose ni abonnement mensuel ni forfait au gigaoctet : le tarif horaire de la règle et le tarif par Gio **s'additionnent**, et c'est la durée d'existence du load balancer qui fait le coût. Durée prise : 16 jours, soit 384 h, jusqu'au 11 décembre.
+
+| Poste | Tarif lu | Sur 16 jours, au plus |
+| --- | --- | --- |
+| Règle de transfert du load balancer (les 5 premières ; une suffit en général) | 0,025 $/h, soit 0,60 $/jour | environ 9,6 $ |
+| Données traitées par le load balancer (régional) | 0,008 $/Gio en entrée et autant en sortie | négligeable au volume de nos tests |
+| IP statique associée à une règle de transfert | sans frais | 0 |
+| IP externe sur une VM standard | 0,005 $/h par IP | environ 1,9 $ par VM |
+| Cloud NAT | 0,0014 $/h par VM (jusqu'à 32) + 0,005 $/h par IP de la passerelle + 0,045 $/Gio traité | environ 3 $ pour 2 VM, plus les données |
+
+- **Totaux de la vue cible** : load balancer et IP externes sur les deux VM, environ 13 $ ; load balancer et Cloud NAT, environ 13 $ ; sans load balancer, une IP externe par VM, environ 4 $. Ces montants sont faibles devant le crédit de 269 € : le coût ne doit pas décider.
+- **Ils courent aussi VM éteintes** : la règle de transfert est facturée tant qu'elle existe, comme l'IP de la passerelle NAT. La règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé.
+- **Quel type** : le tarif de la règle de transfert est le même pour les load balancers réseau (passthrough et proxy) et d'application externes ; le choix est donc technique. Seul le load balancer réseau **passthrough externe** transmet à la fois le TCP (web) et l'UDP (TURN) sur une même IP ; un load balancer d'application ne traite que le HTTP(S) et un load balancer réseau proxy que le TCP (connaissance générale de GCP, pas lue sur la page de tarifs : à confirmer dans la documentation). Les load balancers internes sont à écarter : le load balancer d'application interne facture au minimum trois instances de proxy à 0,025 $/h chacune, même sans trafic.
+- **Hypothèse à mesurer avant de s'y engager** : coturn derrière un load balancer passthrough. Les paquets relayés que coturn envoie à l'autre pair doivent porter l'adresse du load balancer comme source ; avec Cloud NAT, ils porteraient celle de la passerelle et pourraient être ignorés par le pair. À vérifier avec un appel relayé.
+- **Recommandation pour F18** : des IP externes sur les VM plutôt que Cloud NAT (coût comparable, une pièce de moins, pas de question d'adresse source pour coturn). Les règles de pare-feu continuent de limiter les entrées.
+- **Alternative sans load balancer**, à garder si le test coturn échoue : une IP statique propre à la VM TURN et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof).
 
 #### Frontières de confiance
 
@@ -636,12 +649,12 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F11 | les deux | Caddy | API (`api:3000`) | 3000/tcp | HTTP, réseau Docker | **aucun** | proposé | `Test-NetConnection <IP> -Port 3000` : bloqué depuis Internet | ADR-0016, `infra/caddy/Caddyfile` |
 | F12 | les deux | API | Redis | 6379/tcp | RESP, réseau Docker | **aucun** | existant (code), déploiement proposé | port non publié (`docker compose ps`) | ADR-0006, `apps/api/src/config.ts` |
 | F13 | J1 | API | PostgreSQL (Compose) | 5432/tcp | PostgreSQL, réseau Docker | **aucun** | **à confirmer** (voir plus haut) | port non publié (`docker compose ps`) | ADR-0006 |
-| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0018 (brouillon) |
+| F13 | cible | API | Supabase PostgreSQL | 5432/tcp (mode session, à vérifier) | PostgreSQL | TLS obligatoire | **à confirmer** | `select ssl from pg_stat_ssl where pid = pg_backend_pid();` → `true` | ADR-0017 (brouillon) |
 | F14 | les deux | postgres-backup | PostgreSQL (J1 : local ; cible : Supabase) | 5432/tcp | `pg_dump` | fichier chiffré age (+ TLS en cible) | existant (script) | `infra/backup/restore-test.sh` | #9, #31, `infra/backup/` |
 | F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
 | F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
 | F17 | les deux | API | coturn | — | aucun flux : secret HMAC partagé | — | proposé | identifiants refusés après expiration | architecture § 6.4 |
-| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) | `curl https://…` depuis la VM | — |
+| F18 | cible | VM web et VM TURN | Internet (registre, Supabase, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) ; IP externes recommandées, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
 | F19 | les deux | CI (GitHub Actions) | Registre d'images | 443/tcp | HTTPS (push d'images API et client) | TLS | à trancher : registre non choisi | image taguée par SHA dans le registre | ADR-0012, #12, `ci.yml` (commentaire « push registry ») |
 | F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
 | F21 | cible (manquant en J1) | postgres-backup | stockage hors de l'hôte (bucket à choisir) | 443/tcp | HTTPS | TLS + fichier chiffré age | **manquant** | restauration depuis la copie distante | #42 |
@@ -672,7 +685,7 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 
 - **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
 - ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
-- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0018 (base sur Supabase) n'existe pas encore dans le dépôt.
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt. L'[ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) (load balancer et Terraform) est rédigé, statut « proposé ».
 
 #### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
 
@@ -682,16 +695,18 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 4. **TURN** : VM dédiée (cible), puis plusieurs serveurs avec le même secret HMAC ; un SFU pour les conférences (suspendu).
 5. **Observabilité hors de la VM applicative** ; le générateur de charge tourne déjà hors de l'hôte testé (ADR-0012).
 6. **Client statique sur un CDN ou un bucket**, Caddy ne gardant que l'API et les WebSocket.
-7. **Terraform** pour les ressources GCP (VM, pare-feu, IP, IAP, calendrier d'arrêt), créées à la main aujourd'hui (NFR-07).
+7. **Terraform retenu** pour décrire les ressources GCP (VM, pare-feu, IP, load balancer, IAP, calendrier d'arrêt), créées à la main aujourd'hui (NFR-07). Points à régler dans un ADR : où vit l'état Terraform (il contient des données sensibles et n'est jamais commité : `.gitignore` exclut déjà `*.tfstate`), import des ressources existantes (`terraform import`) ou recréation, et exécution depuis un poste puis depuis la CI sans clé de compte de service durable.
 8. **Au-delà d'un hôte** : groupe d'instances managé ou k3s derrière un load balancer Google, qui reprendrait le TLS et la protection DDoS.
 
 #### Transcription en code
 
+Les ressources GCP sont décrites en **Terraform**, dans `infra/terraform/` (à créer ; un ADR doit consigner ce choix). Les noms de types de ressources ci-dessous sont indicatifs et à confirmer à l'écriture.
+
 | Ligne(s) | Fichier ou ressource |
 | --- | --- |
-| F01-F06 | règles de pare-feu VPC `chatisen-web`, `chatisen-turn` ; en cible, règles de transfert du load balancer |
-| F07-F08 | règle `chatisen-ssh-iap` (source `35.235.240.0/20`), suppression de `default-allow-ssh` |
-| F10 | règle de pare-feu des sondes de santé, services de backend du load balancer (cible) |
+| F01-F06 | règles de pare-feu VPC `chatisen-web`, `chatisen-turn` (`google_compute_firewall`) ; en cible, règle de transfert et services de backend du load balancer |
+| F07-F08 | règle `chatisen-ssh-iap` (`google_compute_firewall`, source `35.235.240.0/20`), suppression de `default-allow-ssh` |
+| F10 | règle de pare-feu des sondes de santé, vérification de santé et service de backend du load balancer (cible) |
 | F11-F13 (J1) | `infra/compose/` : seul Caddy publie des ports |
 | F04-F06, F16 | `infra/coturn/turnserver.conf` (ports, `external-ip`, plage de relais, métriques) |
 | F13-F14, F21 | `DATABASE_URL`, `infra/backup/compose.yml`, cible de copie (#42) |
@@ -723,13 +738,13 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 
 | Source | Métriques clés | Usage |
 | --- | --- | --- |
-| API (`GET /metrics`, exposition Prometheus) | appels démarrés, acceptés, terminés par raison, échecs de négociation ICE, histogramme de durée ; échantillons qualité et nombre d'appels distincts par dernier candidat ICE | SLO appels, taux TURN, détection des échecs |
+| API (`prom-client`) | latence HTTP par route (histogramme), taux d'erreurs, connexions Socket.IO actives, messages/s, **latence d'ack `message:send`**, durée des requêtes SQL | SLO messagerie, tests de charge |
 | Clients (`getStats`) | RTT, jitter, perte de paquets, débit, type de candidat ICE | Qualité de communication, Data / IA |
-| coturn (exporter Prometheus intégré) | disponibilité, allocations actives, octets relayés | Part des appels relayés, coût TURN |
-| Postgres / Redis / conteneurs | connexions, latence, CPU, mémoire (collecteurs à raccorder) | Goulots d'étranglement |
-| Logs (pino) | JSON avec `requestId`, `userId`, `socketId` ; centralisation Loki à raccorder | Investigation d'incident |
+| coturn (exporter Prometheus intégré) | allocations actives, octets relayés | Part des appels relayés, coût TURN |
+| Postgres / Redis / conteneurs | connexions, latence, CPU, mémoire | Goulots d'étranglement |
+| Logs (pino → Loki) | JSON avec `requestId`, `userId`, `socketId` | Investigation d'incident |
 
-Alertes provisionnées : `CoturnUnavailable` (cible coturn injoignable) et `CallNegotiationFailureRateHigh` (plus de 20 % d'échecs ICE sur 5 min). Les compteurs d'appels API sont process-local et se réinitialisent au redémarrage ; les mesures de qualité et la classification par candidat sont calculées depuis PostgreSQL. Les seuils et la notification opérationnelle restent à valider sur la VM de supervision.
+Alertes de départ (à calibrer après les premiers tests de charge) : taux d'erreurs 5xx, p95 de la latence d'ack au-dessus du seuil, `/health/ready` en échec, perte de paquets moyenne élevée sur les appels en cours.
 
 ### 10.2 Comportement en cas de panne (NFR-03)
 
@@ -792,4 +807,6 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0014](adr/0014-release-please.md) | Versionnement et releases avec release-please | proposé, rédigé |
 | ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
-| ADR-0018 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
+| ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
+| [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
+| [ADR-0019](adr/0019-coturn-vm-dediee.md) | Isolation de coturn sur une VM dédiée (vue cible) | proposé, à valider |
