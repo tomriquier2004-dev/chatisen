@@ -110,7 +110,7 @@ export class CallQualityCollector {
 
   start(): void {
     if (this.timer || this.stopping) return;
-    this.timer = this.schedule(() => void this.collect(), this.intervalMs);
+    this.timer = this.schedule(() => this.collect(), this.intervalMs);
   }
 
   async stop(): Promise<void> {
