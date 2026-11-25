@@ -14,6 +14,10 @@ Mode d'emploi de l'hôte de déploiement et du contenu de `infra/`. Décisions :
 
 **La VM est éteinte par défaut.** On l'allume pour travailler et on l'éteint ensuite : un calendrier d'instance l'arrête aussi chaque nuit à 00h00 (Paris). Éteinte, elle ne coûte que son disque et son IP.
 
+## Obtenir l'accès (une seule fois)
+
+Sha ou Tom (administrateurs IAM du projet) ajoutent ton compte Google dans IAM avec deux rôles : « Administrateur d'instances Compute (v1) » (démarrer, arrêter) et « Connexion au système d'exploitation Compute » (SSH par OS Login). Ces rôles ne donnent accès ni à la facturation ni à l'administration IAM. Communique à Sha l'adresse du compte Google à utiliser **en privé** : elle ne s'écrit pas dans le dépôt.
+
 ## Se connecter
 
 1. Installer le SDK : `winget install Google.CloudSDK` (Windows), puis rouvrir le terminal.
@@ -21,6 +25,10 @@ Mode d'emploi de l'hôte de déploiement et du contenu de `infra/`. Décisions :
 3. `gcloud config set project <ID_PROJET>`. L'identifiant du projet se demande à Sha, il n'est pas dans le dépôt.
 
 Ne jamais créer ni commiter de clé JSON de compte de service, de mot de passe ou de jeton.
+
+**Depuis un autre appareil** (second PC, poste d'un binôme) : mêmes trois étapes, avec le même compte Google. Aucune clé à copier : `gcloud compute ssh` crée et enregistre lui-même une clé pour cet appareil via OS Login. Ne jamais déplacer une clé privée d'un appareil à l'autre. Le nom d'utilisateur Linux sur la VM est dérivé du compte Google (par exemple `prenom_nom_gmail_com`), il est affiché à la première connexion.
+
+**Sans installer `gcloud`** : dans la console Google Cloud, Compute Engine puis Instances, le bouton « SSH » de la ligne `chatisen-prod` ouvre un terminal dans le navigateur. Il demande les mêmes rôles et sert aussi quand le réseau local bloque le port 22.
 
 ## Commandes courantes
 
@@ -53,6 +61,16 @@ gcloud compute addresses describe chatisen-ip --region=europe-west1 --format="va
 ```
 
 **Règle d'équipe** : celui qui allume éteint. L'astreinte de la semaine vérifie chaque soir que la VM est éteinte. Dans les commandes PowerShell, mettre entre guillemets tout argument qui contient une virgule.
+
+Sur la VM, les commandes Docker de ce document s'écrivent avec `sudo` (`sudo docker ...`).
+
+## Crédit, coûts et arrêt automatique
+
+- **Lire le crédit restant** : console Google Cloud, Facturation, vue d'ensemble : la carte « Welcome credit » affiche le crédit restant et les jours restants. Une alerte de budget prévient par e-mail aux seuils de 25, 50, 75 et 90 % de 135 € ; elle ne coupe rien.
+- **Ne jamais cliquer sur « Mettre à niveau »** : le compte reste en essai gratuit, rien n'est facturé tant qu'on ne passe pas à un compte payant (indication de la console).
+- **Éteinte, la VM coûte encore** son disque et son IP statique, sur le crédit. L'arrêt économise le calcul seulement.
+- **Arrêt automatique de 00h00** : il a été configuré par Sha et reste à vérifier le premier soir (ADR-0012). Pour une séance qui dépasse minuit (mesures, répétition de démo), suspendre le calendrier d'instance dans la console avant la séance (Compute Engine, calendriers d'instance : l'intitulé exact est à vérifier), puis le réactiver. Après un arrêt automatique, rallumer la VM à la main.
+- Une VM éteinte ne fait ni sauvegarde, ni collecte de métriques, ni déploiement : l'allumer avant toute séance de mesure ou de déploiement.
 
 ## Ports
 
@@ -147,6 +165,19 @@ gcloud compute ssh chatisen-prod --zone=europe-west1-b -- -L 3000:localhost:3000
 ```
 
 puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à l'avance ou projeter des captures.
+
+## Dépannage
+
+| Symptôme | Cause probable | Que faire |
+| --- | --- | --- |
+| `gcloud` demande de se reconnecter | session expirée | `gcloud auth login` |
+| Erreur 403 ou « permission denied » au SSH ou au démarrage | rôles IAM manquants | demander à Sha ou Tom de vérifier les deux rôles de ton compte (section « Obtenir l'accès ») |
+| « resource not found » | mauvais projet actif | `gcloud config get-value project`, puis `gcloud config set project <ID_PROJET>` |
+| La connexion SSH n'aboutit pas (délai dépassé) | VM éteinte (`TERMINATED`), ou réseau local qui bloque le port 22 | vérifier l'état de la VM, la démarrer si besoin ; sinon utiliser le bouton « SSH » de la console |
+| `permission denied` sur `docker` | commande lancée sans `sudo` | préfixer par `sudo` |
+| Le nom `dc-ops.isen.fedyna.fr` ne répond pas encore à l'IP de la VM | le TTL de l'ancien enregistrement est de 15 min | attendre, puis vérifier avec `nslookup dc-ops.isen.fedyna.fr 8.8.8.8` ; ne pas démarrer Caddy avec le nom tant que la réponse n'est pas l'IP de la VM |
+| Caddy n'obtient pas de certificat | DNS pas encore à jour, port 80 injoignable, ou VM éteinte | lire les journaux : `sudo docker compose -f compose.ports-test.yml logs caddy` ; corriger la cause avant de relancer (Let's Encrypt limite les validations échouées) |
+| Argument PowerShell coupé à la virgule | PowerShell découpe les virgules non protégées | mettre l'argument entre guillemets |
 
 ## Contenu de `infra/`
 
