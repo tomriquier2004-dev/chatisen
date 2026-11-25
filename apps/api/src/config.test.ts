@@ -10,6 +10,8 @@ describe("loadConfig", () => {
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_DAYS: 30,
       TURN_CREDENTIAL_TTL_SECONDS: 3600,
+      CALL_RING_TIMEOUT_SECONDS: 30,
+      CALL_DISCONNECT_GRACE_SECONDS: 10,
       NODE_ENV: "development",
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
