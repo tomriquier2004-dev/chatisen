@@ -76,7 +76,12 @@ describe("loadConfig", () => {
   });
 
   describe("cookie Secure", () => {
-    const explicit = { JWT_SECRET: "x".repeat(48), DATABASE_URL: "postgres://u:p@db/x" };
+    const explicit = {
+      JWT_SECRET: "x".repeat(48),
+      DATABASE_URL: "postgres://u:p@db/x",
+      TURN_SHARED_SECRET: "turn-secret-".repeat(4),
+      TURN_URLS: "turn:turn.example.test:3478",
+    };
 
     it("est désactivé seulement en development ou test sur une adresse locale", () => {
       expect(secureCookies(loadConfig({}))).toBe(false);
