@@ -241,13 +241,9 @@ export class CallSignaling {
   }
 
   private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: RtcDescriptionPayload): Promise<{ relayed: true }> {
-    try {
-      const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
-      this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
-      return { relayed: true };
-    } catch (error) {
-      throw error;
-    }
+    const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
+    this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
+    return { relayed: true };
   }
 
   private async relayCandidate(userId: string, payload: RtcIceCandidatePayload): Promise<{ relayed: true }> {
