@@ -55,6 +55,8 @@ try {
     redisUrl: config.REDIS_URL,
     events,
     rateLimit: { limiter: rateLimiter, enabled: config.RATE_LIMIT_ENABLED },
+    callRingTimeoutSeconds: config.CALL_RING_TIMEOUT_SECONDS,
+    callDisconnectGraceSeconds: config.CALL_DISCONNECT_GRACE_SECONDS,
   });
   if (!config.REDIS_URL) app.log.warn("REDIS_URL absent : Socket.IO sans adapter Redis (une seule instance possible)");
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
