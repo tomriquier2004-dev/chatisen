@@ -1,0 +1,19 @@
+# Override de construction locale : à utiliser avec compose.prod.yml quand les images ne viennent pas du
+# registre (essai local, ou secours sur la VM si GHCR est indisponible).
+#   docker compose -f compose.prod.yml -f compose.build.yml up -d --build
+# Les contextes sont relatifs à ce dossier ; l'API et le client se construisent depuis la RACINE du dépôt.
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: chatisen/api:local
+  caddy:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    image: chatisen/web:local
+  postgres-backup:
+    build:
+      context: ../backup
+    image: chatisen/postgres-backup:local

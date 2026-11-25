@@ -1,0 +1,17 @@
+# Contexte de build Docker : la racine du dépôt. Ne rien envoyer au démon qui ne sert pas à construire.
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+docs
+infra
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+secrets
