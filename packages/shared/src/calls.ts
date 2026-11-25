@@ -9,6 +9,35 @@ export const IceCandidateType = Type.Union([
 ]);
 export type IceCandidateType = Static<typeof IceCandidateType>;
 
+export const CallMedia = Type.Union([Type.Literal("audio"), Type.Literal("video")]);
+export type CallMedia = Static<typeof CallMedia>;
+
+export const CallEndReason = Type.Union([
+  Type.Literal("hangup"),
+  Type.Literal("rejected"),
+  Type.Literal("timeout"),
+  Type.Literal("busy"),
+  Type.Literal("removed"),
+  Type.Literal("disconnected"),
+  Type.Literal("failed"),
+]);
+export type CallEndReason = Static<typeof CallEndReason>;
+
+/** Erreurs métier fermées retournées dans les ACK des événements d'appel. */
+export const CallAckErrorCode = Type.Union([
+  Type.Literal("VALIDATION_FAILED"),
+  Type.Literal("UNAUTHENTICATED"),
+  Type.Literal("FORBIDDEN"),
+  Type.Literal("NOT_FOUND"),
+  Type.Literal("RATE_LIMITED"),
+  Type.Literal("INTERNAL_ERROR"),
+  Type.Literal("CALL_NOT_FOUND"),
+  Type.Literal("CALL_NOT_ACTIVE"),
+  Type.Literal("CALL_BUSY"),
+  Type.Literal("CALL_ALREADY_ENDED"),
+]);
+export type CallAckErrorCode = Static<typeof CallAckErrorCode>;
+
 export const CallQualityParams = Type.Object({ id: Uuid }, { additionalProperties: false });
 export type CallQualityParams = Static<typeof CallQualityParams>;
 
@@ -37,3 +66,70 @@ export const CallQualityResponse = Type.Object(
   { additionalProperties: false },
 );
 export type CallQualityResponse = Static<typeof CallQualityResponse>;
+
+/** call:invite : création d'un appel privé 1-1 ; l'ACK confirme seulement la création. */
+export const CallInvitePayload = Type.Object(
+  { conversationId: Uuid, media: CallMedia },
+  { additionalProperties: false },
+);
+export type CallInvitePayload = Static<typeof CallInvitePayload>;
+export const CallInviteAck = Type.Object({ callId: Uuid }, { additionalProperties: false });
+export type CallInviteAck = Static<typeof CallInviteAck>;
+
+export const CallIdPayload = Type.Object({ callId: Uuid }, { additionalProperties: false });
+export type CallIdPayload = Static<typeof CallIdPayload>;
+
+export const CallIncomingEvent = Type.Object(
+  { callId: Uuid, conversationId: Uuid, from: Uuid, media: CallMedia },
+  { additionalProperties: false },
+);
+export type CallIncomingEvent = Static<typeof CallIncomingEvent>;
+
+export const CallAcceptedEvent = Type.Object(
+  { callId: Uuid, userId: Uuid },
+  { additionalProperties: false },
+);
+export type CallAcceptedEvent = Static<typeof CallAcceptedEvent>;
+
+export const CallEndedEvent = Type.Object(
+  { callId: Uuid, reason: CallEndReason },
+  { additionalProperties: false },
+);
+export type CallEndedEvent = Static<typeof CallEndedEvent>;
+
+/** Les SDP sont bornés pour éviter les payloads arbitrairement volumineux. */
+export const RtcDescriptionPayload = Type.Object(
+  { callId: Uuid, to: Uuid, sdp: Type.String({ minLength: 1, maxLength: 16_384 }) },
+  { additionalProperties: false },
+);
+export type RtcDescriptionPayload = Static<typeof RtcDescriptionPayload>;
+
+/** Sous-ensemble RTCIceCandidateInit ; les champs optionnels restent explicitement nullables. */
+export const RtcIceCandidate = Type.Object(
+  {
+    candidate: Type.String({ minLength: 1, maxLength: 4_096 }),
+    sdpMid: Type.Optional(Type.Union([Type.String({ maxLength: 256 }), Type.Null()])),
+    sdpMLineIndex: Type.Optional(Type.Union([Type.Integer({ minimum: 0, maximum: 65_535 }), Type.Null()])),
+    usernameFragment: Type.Optional(Type.Union([Type.String({ maxLength: 256 }), Type.Null()])),
+  },
+  { additionalProperties: false },
+);
+export type RtcIceCandidate = Static<typeof RtcIceCandidate>;
+
+export const RtcIceCandidatePayload = Type.Object(
+  { callId: Uuid, to: Uuid, candidate: RtcIceCandidate },
+  { additionalProperties: false },
+);
+export type RtcIceCandidatePayload = Static<typeof RtcIceCandidatePayload>;
+
+/** Réponse de GET /turn/credentials ; le secret partagé ne fait jamais partie du DTO. */
+export const TurnCredentialsResponse = Type.Object(
+  {
+    urls: Type.Array(Type.String({ minLength: 1, maxLength: 2_048 }), { minItems: 1, maxItems: 8 }),
+    username: Type.String({ minLength: 1, maxLength: 256 }),
+    credential: Type.String({ minLength: 1, maxLength: 256 }),
+    ttl: Type.Integer({ minimum: 60, maximum: 86_400 }),
+  },
+  { additionalProperties: false },
+);
+export type TurnCredentialsResponse = Static<typeof TurnCredentialsResponse>;
