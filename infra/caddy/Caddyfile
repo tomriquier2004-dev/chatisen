@@ -1,0 +1,38 @@
+# Point d'entrée de production (ADR-0016). Un seul nom d'hôte, routage par chemin :
+#   /api/*, /socket.io/*  ->  API (réseau interne Docker)
+#   tout le reste         ->  build statique du client
+# SITE_ADDRESS est obligatoire (ex. dc-ops.isen.fedyna.fr) : Caddy obtient lui-même le certificat
+# Let's Encrypt, à condition que le DNS pointe déjà vers la VM (voir infra/README.md).
+{
+	# HTTP/3 utilise l'UDP 443, que le pare-feu GCP n'ouvre pas : ne pas l'annoncer aux clients.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		# 1 jour au départ : une erreur de configuration TLS reste rattrapable. À augmenter ensuite.
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Les WebSocket de Socket.IO passent par reverse_proxy sans réglage supplémentaire.
+	handle /socket.io/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
