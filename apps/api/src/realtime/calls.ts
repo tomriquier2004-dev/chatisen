@@ -7,6 +7,7 @@ import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   CallIdPayload,
   CallInvitePayload,
+  CallMediaStatePayload,
   RtcDescriptionPayload,
   RtcIceCandidatePayload,
   type CallAck,
@@ -62,6 +63,8 @@ export class CallSignaling {
       this.handler(socket, CallIdPayload, async (payload) => this.reject(userId, payload.callId))));
     socket.on("call:hangup", this.withLimit(socket, "call-action", 30, 60_000,
       this.handler(socket, CallIdPayload, async (payload) => this.hangup(userId, payload.callId))));
+    socket.on("call:media-state", this.withLimit(socket, "call-action", 30, 60_000,
+      this.handler(socket, CallMediaStatePayload, async (payload) => this.relayMediaState(userId, payload))));
     socket.on("rtc:offer", this.withLimit(socket, "rtc-signal", 120, 60_000,
       this.handler(socket, RtcDescriptionPayload, async (payload) => this.relayDescription(userId, "rtc:offer", payload))));
     socket.on("rtc:answer", this.withLimit(socket, "rtc-signal", 120, 60_000,
@@ -219,6 +222,16 @@ export class CallSignaling {
     const ended = await this.endCall(callId, "hangup");
     if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
     return { callId };
+  }
+
+  private async relayMediaState(userId: string, payload: CallMediaStatePayload): Promise<{ relayed: true }> {
+    const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
+    this.io.to(userRoom(target)).emit("call:media-state", {
+      callId: payload.callId,
+      from: userId,
+      cameraEnabled: payload.cameraEnabled,
+    });
+    return { relayed: true };
   }
 
   private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: RtcDescriptionPayload): Promise<{ relayed: true }> {
