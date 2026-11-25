@@ -15,6 +15,7 @@ export type CallQualityParams = Static<typeof CallQualityParams>;
 /** Un échantillon côté client ; l'identité du contributeur et l'horodatage sont fournis par l'API. */
 export const CallQualitySampleInput = Type.Object(
   {
+    observedAt: Type.String({ minLength: 20, maxLength: 40 }),
     rttMs: Type.Number({ minimum: 0, maximum: 300_000 }),
     jitterMs: Type.Number({ minimum: 0, maximum: 60_000 }),
     packetLossPct: Type.Number({ minimum: 0, maximum: 100 }),
