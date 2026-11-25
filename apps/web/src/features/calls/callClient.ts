@@ -162,6 +162,10 @@ export class CallClient {
   }
 
   /** Arrête les médias et retire tous les écouteurs ; à appeler au démontage de l'application. */
+  dismissEnded(): void {
+    if (this.stateValue.status === "ended") this.dispatch({ type: "reset" });
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
@@ -358,6 +362,7 @@ export class CallClient {
   }
 
   private notify(): void {
-    for (const listener of this.listeners) listener(this.stateValue);
+    const snapshot = { ...this.stateValue } as CallState;
+    for (const listener of this.listeners) listener(snapshot);
   }
 }
