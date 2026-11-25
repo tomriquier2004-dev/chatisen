@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Compare un seuil fixe et un EWMA sur des échantillons WebRTC labellisés."""
 from __future__ import annotations
-import argparse, csv, json, math, sys
-from collections import defaultdict
+import argparse, csv, json, math, statistics, sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +49,8 @@ def load_samples(path: Path) -> list[Sample]:
                 ts = datetime.fromisoformat((row.get("ts") or "").replace("Z", "+00:00"))
             except ValueError as exc:
                 raise ValueError(f"ligne {line}: ts doit être une date ISO-8601") from exc
+            if ts.tzinfo is None:
+                raise ValueError(f"ligne {line}: ts doit inclure un fuseau horaire")
             rtt = _number(row.get("rtt_ms", ""), "rtt_ms", line)
             jitter = _number(row.get("jitter_ms", ""), "jitter_ms", line)
             loss = _number(row.get("packet_loss_pct", ""), "packet_loss_pct", line)
@@ -73,6 +74,20 @@ def confusion(labels: list[bool], predictions: list[bool]) -> dict[str, int | fl
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "precision": round(precision, 4), "recall": round(recall, 4), "f1": round(f1, 4)}
+
+def _condition_summary(group: list[Sample]) -> dict[str, int | float]:
+    if not group:
+        return {}
+    rtts = sorted(sample.rtt_ms for sample in group)
+    p95_index = max(0, math.ceil(0.95 * len(rtts)) - 1)
+    return {
+        "samples": len(group),
+        "median_rtt_ms": round(statistics.median(rtts), 2),
+        "p95_rtt_ms": round(rtts[p95_index], 2),
+        "mean_jitter_ms": round(statistics.mean(sample.jitter_ms for sample in group), 2),
+        "mean_packet_loss_pct": round(statistics.mean(sample.packet_loss_pct for sample in group), 2),
+        "relay_share": round(sum(sample.candidate_type == "relay" for sample in group) / len(group), 4),
+    }
 
 def evaluate(samples: Iterable[Sample], *, alpha: float = 0.3, rtt_threshold_ms: float = 150.0,
              jitter_threshold_ms: float = 30.0, packet_loss_threshold_pct: float = 3.0) -> dict[str, object]:
@@ -102,6 +117,10 @@ def evaluate(samples: Iterable[Sample], *, alpha: float = 0.3, rtt_threshold_ms:
         "thresholds": {"rtt_ms": rtt_threshold_ms, "jitter_ms": jitter_threshold_ms, "packet_loss_pct": packet_loss_threshold_pct, "ewma_alpha": alpha},
         "models": {"fixed_threshold": confusion(labels, fixed_predictions), "ewma": confusion(labels, ewma_predictions)},
         "candidate_types": by_candidate,
+        "conditions": {
+            "normal": _condition_summary([sample for sample in ordered if not sample.degraded]),
+            "degraded": _condition_summary([sample for sample in ordered if sample.degraded]),
+        },
         "label_definition": "degraded décrit la condition réseau injectée, pas une note subjective de qualité.",
     }
 
