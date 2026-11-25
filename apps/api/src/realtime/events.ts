@@ -1,6 +1,7 @@
 import type { MembershipEvents } from "../modules/conversations/events";
 import type { SessionEvents } from "../modules/auth/events";
 import type { IoServer } from "./index";
+import type { Db } from "../db";
 
 export const userRoom = (userId: string) => `user:${userId}`;
 export const conversationRoom = (conversationId: string) => `conv:${conversationId}`;
@@ -18,9 +19,11 @@ export const sessionRoom = (sessionId: string) => `session:${sessionId}`;
  */
 export class RealtimeEvents implements MembershipEvents, SessionEvents {
   private io: IoServer | undefined;
+  private db: Db | undefined;
 
-  bind(io: IoServer): void {
+  bind(io: IoServer, db?: Db): void {
     this.io = io;
+    this.db = db;
   }
 
   async memberAdded(e: Parameters<MembershipEvents["memberAdded"]>[0]): Promise<void> {
@@ -43,7 +46,26 @@ export class RealtimeEvents implements MembershipEvents, SessionEvents {
     if (!this.io) return;
     // 1. D'abord quitter la room : plus aucun message:new pour ce membre, sur toutes les instances.
     this.io.in(userRoom(e.userId)).socketsLeave(conversationRoom(e.conversationId));
-    // 2. Puis prévenir le membre retiré (room user) et les membres restants (room conv).
+    // 2. Un retrait met immédiatement fin à tout appel actif dans cette conversation (§ 5.3).
+    if (this.db) {
+      const calls = await this.db.selectFrom("calls").select("id")
+        .where("conversation_id", "=", e.conversationId).where("ended_at", "is", null).execute();
+      for (const call of calls) {
+        const ended = await this.db.transaction().execute(async (trx) => {
+          const row = await trx.updateTable("calls").set({ ended_at: new Date(), end_reason: "removed" })
+            .where("id", "=", call.id).where("ended_at", "is", null).returning("id").executeTakeFirst();
+          if (!row) return false;
+          await trx.updateTable("call_participants").set({ left_at: new Date() })
+            .where("call_id", "=", call.id).where("left_at", "is", null).execute();
+          return true;
+        });
+        if (!ended) continue;
+        this.io.to([userRoom(e.userId), ... (await this.db.selectFrom("conversation_members").select("user_id")
+          .where("conversation_id", "=", e.conversationId).execute()).map((m) => userRoom(m.user_id))])
+          .emit("call:ended", { callId: call.id, reason: "removed" });
+      }
+    }
+    // 3. Puis prévenir le membre retiré (room user) et les membres restants (room conv).
     this.io
       .to([userRoom(e.userId), conversationRoom(e.conversationId)])
       .emit("conversation:member-removed", {
