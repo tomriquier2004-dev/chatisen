@@ -38,7 +38,14 @@ export function transitionCallState(state: CallState, action: CallAction): CallS
       return { status: "connecting", callId: state.callId, conversationId: state.conversationId, peerId: state.peerId, media: state.media, candidateType: null };
     }
     if (state.status === "incoming") {
-      return { status: "connecting", ...state, candidateType: null };
+      return {
+        status: "connecting",
+        callId: state.callId,
+        conversationId: state.conversationId,
+        peerId: state.peerId,
+        media: state.media,
+        candidateType: null,
+      };
     }
   }
   if (action.type === "connected" && state.status === "connecting") return { ...state, status: "connected" };
