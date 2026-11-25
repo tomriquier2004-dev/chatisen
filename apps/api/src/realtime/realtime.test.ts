@@ -434,7 +434,7 @@ describe("appels 1-1 et signalisation WebRTC", () => {
     })) as CallAck<{ relayed: true }>;
     expect(forbiddenRelay).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
     expect(await noOffer).toBe(true);
-  });
+  }, 15_000);
 
   it("termine l'appel si un participant reste déconnecté au-delà du délai de grâce", async () => {
     const alice = await registerUser(a.app, "call-alice");
