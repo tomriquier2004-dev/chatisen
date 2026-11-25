@@ -9,7 +9,7 @@ import {
   type ErrorCode,
 } from "@chatisen/shared";
 import cookie from "@fastify/cookie";
-import { secureCookies, type Config } from "./config";
+import { microsoftConfig, secureCookies, type Config } from "./config";
 import type { Db } from "./db";
 import { AppError } from "./errors";
 import { noopSessionEvents, type SessionEvents } from "./modules/auth/events";
@@ -18,7 +18,8 @@ import { noopMembershipEvents, type MembershipEvents } from "./modules/conversat
 import { conversationRoutes } from "./modules/conversations/routes";
 import { callRoutes } from "./modules/calls/routes";
 import { messageRoutes } from "./modules/messages/routes";
-import { TokenService } from "./modules/auth/tokens";
+import { FlowStateSigner, TokenService } from "./modules/auth/tokens";
+import { EntraIdClient, type MicrosoftClient } from "./modules/auth/microsoft";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
 import { MemoryRateLimiter, type RateLimiter } from "./plugins/rate-limit";
@@ -31,6 +32,8 @@ export interface AppDeps {
   sessionEvents?: SessionEvents;
   /** Compteurs de limitation de débit ; en mémoire par défaut, Redis en déploiement (issue #71). */
   rateLimiter?: RateLimiter;
+  /** Client OIDC Microsoft ; remplacé dans les tests. Par défaut, Entra ID si la configuration le permet. */
+  microsoftClient?: MicrosoftClient;
 }
 
 declare module "fastify" {
@@ -74,6 +77,10 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
 
   const tokens = new TokenService(config.JWT_SECRET, config.ACCESS_TOKEN_TTL_SECONDS);
   const authenticate = makeAuthenticate(tokens);
+  const msConfig = microsoftConfig(config);
+  const microsoft = msConfig
+    ? { client: deps.microsoftClient ?? new EntraIdClient(msConfig), flowSigner: new FlowStateSigner(config.JWT_SECRET) }
+    : undefined;
 
   app.decorate("db", deps.db);
   app.decorate("tokens", tokens);
@@ -135,6 +142,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
         secureCookies: secureCookies(config),
         sessionEvents: deps.sessionEvents ?? noopSessionEvents,
         limits,
+        microsoft,
       });
       await api.register(userRoutes, { authenticate });
       await api.register(messageRoutes, { authenticate });
