@@ -258,8 +258,9 @@ export class CallClient {
       await pc.setLocalDescription(offer);
       const payload: RtcDescriptionPayload = { callId, to: peerId, sdp: pc.localDescription?.sdp ?? offer.sdp ?? "" };
       this.assertAck(await this.emitAck<{ relayed: true }>("rtc:offer", payload));
-    } catch {
-      await this.fail("ice-failed");
+    } catch (err) {
+      const failure = this.mapFailure(err);
+      await this.fail(failure === "network" ? "network" : "ice-failed");
     }
   }
 
@@ -355,8 +356,9 @@ export class CallClient {
 
   private async emitAck<T>(event: string, payload: unknown): Promise<CallAck<T>> {
     try {
-      const emitWithAck = this.socket.timeout(this.ackTimeoutMs).emitWithAck as unknown as (eventName: string, data: unknown) => Promise<unknown>;
-      return (await emitWithAck.call(this.socket.timeout(this.ackTimeoutMs), event, payload)) as CallAck<T>;
+      const timedSocket = this.socket.timeout(this.ackTimeoutMs);
+      const emitWithAck = timedSocket.emitWithAck as unknown as (eventName: string, data: unknown) => Promise<unknown>;
+      return (await emitWithAck.call(timedSocket, event, payload)) as CallAck<T>;
     } catch {
       throw new ApiError("NETWORK_ERROR", undefined);
     }
@@ -375,7 +377,11 @@ export class CallClient {
 
   private async fail(failure: CallFailure): Promise<void> {
     const callId = "callId" in this.stateValue ? this.stateValue.callId : null;
-    if (callId) void this.emitAck<{ callId: string }>("call:hangup", { callId, reason: "failed" } satisfies CallHangupPayload).catch(() => undefined);
+    if (callId) void this.emitAck<{ callId: string }>("call:hangup", {
+      callId,
+      reason: "failed",
+      negotiationFailed: failure === "ice-failed",
+    } satisfies CallHangupPayload).catch(() => undefined);
     await this.cleanup();
     this.dispatch({ type: "failed", callId, failure });
   }
