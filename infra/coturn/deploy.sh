@@ -18,6 +18,10 @@ set +a
 : "${TURN_SHARED_SECRET:?TURN_SHARED_SECRET is required}"
 : "${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}"
 : "${TURN_INTERNAL_IP:?TURN_INTERNAL_IP is required}"
+if [[ "${TURN_INTERNAL_IP}" != "172.30.0.10" ]]; then
+  echo "TURN_INTERNAL_IP must match the fixed coturn container address 172.30.0.10." >&2
+  exit 1
+fi
 if (( ${#TURN_SHARED_SECRET} < 32 )); then
   echo "TURN_SHARED_SECRET must contain at least 32 characters." >&2
   exit 1
