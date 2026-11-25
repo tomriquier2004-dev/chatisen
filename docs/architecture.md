@@ -112,7 +112,10 @@ erDiagram
     CONVERSATIONS ||--o{ MESSAGES : "contient"
     USERS ||--o{ MESSAGES : "envoie"
     CONVERSATIONS ||--o{ CALLS : "héberge"
-    CALLS ||--o{ CALL_QUALITY_SAMPLES : "mesure"
+    USERS ||--o{ CALLS : "initie"
+    CALLS ||--o{ CALL_PARTICIPANTS : "réunit"
+    USERS ||--o{ CALL_PARTICIPANTS : "participe"
+    CALL_PARTICIPANTS ||--o{ CALL_QUALITY_SAMPLES : "produit"
 
     USERS {
         uuid id PK
@@ -162,6 +165,12 @@ erDiagram
         timestamptz ended_at
         text end_reason
     }
+    CALL_PARTICIPANTS {
+        uuid call_id PK, FK
+        uuid user_id PK, FK
+        timestamptz joined_at
+        timestamptz left_at
+    }
     CALL_QUALITY_SAMPLES {
         bigserial id PK
         uuid call_id FK
@@ -181,7 +190,8 @@ Points de conception :
 - **Idempotence** : contrainte `UNIQUE (conversation_id, client_msg_id)`. Un client qui renvoie un message après une coupure obtient le message déjà stocké, pas un doublon (FR-17, FR-18).
 - **Conversation privée** : une conversation `private` a exactement deux membres ; l'unicité de la paire est garantie applicativement (ou par une colonne `private_key` = paire d'ids triée, `UNIQUE`).
 - **Lu / non lu** : `last_read_seq` par membre suffit à calculer les non-lus sans table supplémentaire.
-- **`CALL_QUALITY_SAMPLES`** alimente directement le travail Data / IA (latence, jitter, perte, type de candidat ICE). Si le volume devient gênant, ces échantillons peuvent être déplacés vers un stockage séparé ; à mesurer avant d'optimiser.
+- **`CALL_PARTICIPANTS`** identifie les participants réels d'un appel ; être membre de la conversation ne suffit pas à envoyer des mesures pour cet appel. Une ligne est conservée après le départ (`left_at`) pour garder l'historique des échantillons.
+- **`CALL_QUALITY_SAMPLES`** est lié à la paire (`call_id`, `user_id`) de `CALL_PARTICIPANTS` par une clé étrangère composite. L'API déduit `user_id` du JWT, n'accepte pas d'identité dans le corps, horodate côté serveur, borne les valeurs et limite les lots à 60 échantillons / 30 requêtes par minute / utilisateur. Cette table alimente le travail Data / IA (latence, jitter, perte, débit et type de candidat ICE). Si le volume devient gênant, ces échantillons peuvent être déplacés vers un stockage séparé ; à mesurer avant d'optimiser.
 - Index principal : `messages (conversation_id, seq DESC)` — c'est la requête d'historique paginé.
 
 ---
@@ -205,7 +215,7 @@ Tous les schémas sont définis **une seule fois** dans `packages/shared` et imp
 | POST · DELETE | `/conversations/:id/members[/:userId]` | Gérer les membres (rôle requis) | FR-03, FR-16 |
 | GET | `/conversations/:id/messages?before=<seq>&limit=` | Historique paginé | FR-08 |
 | GET | `/turn/credentials` | Identifiants TURN éphémères | FR-09, FR-10 |
-| POST | `/calls/:id/quality` | Envoi groupé d'échantillons `getStats` | FR-13 |
+| POST | `/calls/:id/quality` | Envoi groupé d'échantillons `getStats` par un participant actif (1 à 60 échantillons, 30 lots/minute/utilisateur) | FR-13, NFR-04 |
 | GET | `/health/live` · `/health/ready` | Sondes de santé (ready = PG + Redis joignables) | NFR-03, NFR-06 |
 | GET | `/metrics` | Exposition Prometheus (réseau interne uniquement) | NFR-06 |
 
