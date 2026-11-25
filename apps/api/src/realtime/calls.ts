@@ -149,6 +149,7 @@ export class CallSignaling {
         .where("c.ended_at", "is", null)
         .executeTakeFirst();
       if (await activeCallFor(userId)) throw new AppError(409, "CALL_BUSY", "Vous êtes déjà en appel");
+      const targetBusy = Boolean(await activeCallFor(targetId));
 
       const call = await trx
         .insertInto("calls")
@@ -157,7 +158,7 @@ export class CallSignaling {
         .executeTakeFirstOrThrow();
       // L'appelant est le premier participant ; l'appelé ne rejoint qu'après acceptation.
       await trx.insertInto("call_participants").values({ call_id: call.id, user_id: userId }).execute();
-      if (await activeCallFor(targetId)) {
+      if (targetBusy) {
         await trx.updateTable("calls").set({ ended_at: new Date(), end_reason: "busy" })
           .where("id", "=", call.id).execute();
         await trx.updateTable("call_participants").set({ left_at: new Date() })
