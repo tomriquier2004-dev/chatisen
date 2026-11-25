@@ -86,6 +86,7 @@ export class CallQualityCollector {
   private baseline: OutboundBaseline | null = null;
   private samples: CallQualitySampleInput[] = [];
   private stopping = false;
+  private inFlight: Promise<void> | null = null;
   private readonly intervalMs: number;
   private readonly batchSize: number;
   private readonly schedule: typeof setInterval;
@@ -121,8 +122,15 @@ export class CallQualityCollector {
     await this.flush();
   }
 
-  private async collect(): Promise<void> {
-    if (this.stopping && this.samples.length >= 60) return;
+  private collect(): Promise<void> {
+    if (this.inFlight) return this.inFlight;
+    this.inFlight = this.collectOnce().finally(() => {
+      this.inFlight = null;
+    });
+    return this.inFlight;
+  }
+
+  private async collectOnce(): Promise<void> {
     try {
       const extracted = extractCallQuality(await this.peer.getStats(), this.now(), this.baseline);
       this.baseline = extracted.nextBaseline;
