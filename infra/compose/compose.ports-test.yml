@@ -1,0 +1,29 @@
+# Test des ports et du TLS du point d'entrée, sans application (ADR-0016).
+# Ce n'est pas la topologie de déploiement (issue #12). Mode d'emploi : infra/README.md.
+#
+# Sur la VM, depuis ce dossier :
+#   sudo docker compose -f compose.ports-test.yml up -d
+# Avec le nom de domaine (le DNS doit déjà pointer vers la VM) :
+#   sudo SITE_ADDRESS=dc-ops.isen.fedyna.fr docker compose -f compose.ports-test.yml up -d --force-recreate
+name: chatisen-ports-test
+
+services:
+  caddy:
+    image: caddy:2.11.9-alpine
+    # Pas de redémarrage automatique : un test oublié ne doit pas revenir au démarrage de la VM.
+    restart: "no"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ../caddy/Caddyfile.ports-test:/etc/caddy/Caddyfile:ro
+      # Les certificats obtenus restent dans ce volume : Let's Encrypt limite le nombre de
+      # certificats émis par nom et par semaine, donc ne pas le supprimer sans raison.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

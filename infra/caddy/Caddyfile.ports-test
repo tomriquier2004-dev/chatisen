@@ -1,0 +1,23 @@
+# Test des ports et du TLS du point d'entrée, SANS application derrière (ADR-0016, infra/README.md).
+# Les réponses sont fixes. Ne pas utiliser pour un déploiement.
+#
+# SITE_ADDRESS non défini : HTTP simple sur le port 80 (aucun certificat, aucun accès DNS requis).
+# SITE_ADDRESS=dc-ops.isen.fedyna.fr : vrai certificat Let's Encrypt, uniquement si le DNS
+# pointe déjà vers la VM.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	respond /api/v1/health/live "ok (caddy-ports-test)" 200
+	respond "chatisen : test du point d'entrée, HTTP/HTTPS OK" 200
+}
+
+# Accès par l'adresse IP : certificat interne auto-signé, pour prouver que le port 443
+# répond et chiffre, sans nom de domaine. Le navigateur affichera un avertissement (attendu).
+https://:443 {
+	tls internal
+	respond "chatisen : test du point d'entrée, TLS (certificat interne) OK" 200
+}
