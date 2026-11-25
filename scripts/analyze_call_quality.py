@@ -7,12 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
-REQUIRED_COLUMNS = {"call_id", "ts", "rtt_ms", "jitter_ms", "packet_loss_pct", "bitrate_kbps", "candidate_type", "degraded"}
+REQUIRED_COLUMNS = {"call_id", "scenario", "ts", "rtt_ms", "jitter_ms", "packet_loss_pct", "bitrate_kbps", "candidate_type", "degraded"}
 CANDIDATE_TYPES = {"host", "srflx", "relay"}
 
 @dataclass(frozen=True)
 class Sample:
     call_id: str
+    scenario: str
     ts: datetime
     rtt_ms: float
     jitter_ms: float
@@ -45,6 +46,9 @@ def load_samples(path: Path) -> list[Sample]:
         for line, row in enumerate(reader, start=2):
             call_id = (row.get("call_id") or "").strip()
             if not call_id: raise ValueError(f"ligne {line}: call_id est obligatoire")
+            scenario = (row.get("scenario") or "").strip().lower()
+            if not scenario:
+                raise ValueError(f"ligne {line}: scenario est obligatoire")
             try:
                 ts = datetime.fromisoformat((row.get("ts") or "").replace("Z", "+00:00"))
             except ValueError as exc:
@@ -61,7 +65,7 @@ def load_samples(path: Path) -> list[Sample]:
             candidate = (row.get("candidate_type") or "").strip().lower()
             if candidate not in CANDIDATE_TYPES:
                 raise ValueError(f"ligne {line}: candidate_type doit être host, srflx ou relay")
-            samples.append(Sample(call_id, ts, rtt, jitter, loss, int(bitrate), candidate, _label(row.get("degraded", ""), line)))
+            samples.append(Sample(call_id, scenario, ts, rtt, jitter, loss, int(bitrate), candidate, _label(row.get("degraded", ""), line)))
     if not samples: raise ValueError("le fichier ne contient aucun échantillon")
     return samples
 
@@ -117,9 +121,9 @@ def evaluate(samples: Iterable[Sample], *, alpha: float = 0.3, rtt_threshold_ms:
         "thresholds": {"rtt_ms": rtt_threshold_ms, "jitter_ms": jitter_threshold_ms, "packet_loss_pct": packet_loss_threshold_pct, "ewma_alpha": alpha},
         "models": {"fixed_threshold": confusion(labels, fixed_predictions), "ewma": confusion(labels, ewma_predictions)},
         "candidate_types": by_candidate,
-        "conditions": {
-            "normal": _condition_summary([sample for sample in ordered if not sample.degraded]),
-            "degraded": _condition_summary([sample for sample in ordered if sample.degraded]),
+        "scenarios": {
+            scenario: _condition_summary([sample for sample in ordered if sample.scenario == scenario])
+            for scenario in sorted({sample.scenario for sample in ordered})
         },
         "label_definition": "degraded décrit la condition réseau injectée, pas une note subjective de qualité.",
     }
