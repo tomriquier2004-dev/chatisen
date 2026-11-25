@@ -1,0 +1,37 @@
+name: chatisen-coturn
+
+services:
+  coturn:
+    image: coturn/coturn:4.6.2
+    container_name: chatisen-coturn
+    restart: unless-stopped
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+      - --realm=${TURN_REALM:?Set TURN_REALM}
+      - --static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET}
+      - --external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP}/${TURN_INTERNAL_IP:?Set TURN_INTERNAL_IP}
+      - --relay-ip=${TURN_INTERNAL_IP:?Set TURN_INTERNAL_IP}
+      - --log-file=stdout
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-49252:49152-49252/udp"
+      # Metrics accessible on the VM only; Prometheus scrapes over the private Docker network.
+      - "127.0.0.1:9641:9641/tcp"
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9641/metrics >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      observability:
+        aliases: [coturn]
+
+networks:
+  observability:
+    name: chatisen-observability
+    external: true
