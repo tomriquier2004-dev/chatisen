@@ -1,6 +1,7 @@
 import {
   TurnCredentialsResponse,
   type CallAcceptedEvent,
+  type CallHangupPayload,
   type CallAck,
   type CallIncomingEvent,
   type CallInviteAck,
@@ -164,7 +165,7 @@ export class CallClient {
         // Envoie le dernier lot tant que l'appel et le participant sont encore actifs côté API.
         await this.quality?.stop();
         this.quality = null;
-        const ack = await this.emitAck<{ callId: string }>("call:hangup", { callId });
+        const ack = await this.emitAck<{ callId: string }>("call:hangup", { callId, reason: "hangup" } satisfies CallHangupPayload);
         this.assertAck(ack);
       } finally {
         await this.cleanup();
@@ -374,7 +375,7 @@ export class CallClient {
 
   private async fail(failure: CallFailure): Promise<void> {
     const callId = "callId" in this.stateValue ? this.stateValue.callId : null;
-    if (callId) void this.emitAck<{ callId: string }>("call:hangup", { callId }).catch(() => undefined);
+    if (callId) void this.emitAck<{ callId: string }>("call:hangup", { callId, reason: "failed" } satisfies CallHangupPayload).catch(() => undefined);
     await this.cleanup();
     this.dispatch({ type: "failed", callId, failure });
   }
