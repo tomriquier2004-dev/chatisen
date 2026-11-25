@@ -1,5 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Uuid } from "./ids";
+import { ErrorCode } from "./errors";
+import type { ErrorCode as ErrorCodeType } from "./errors";
 
 /** Types de candidats ICE utiles à l'analyse des chemins directs et relayés. */
 export const IceCandidateType = Type.Union([
@@ -24,20 +26,8 @@ export const CallEndReason = Type.Union([
 export type CallEndReason = Static<typeof CallEndReason>;
 
 /** Erreurs métier fermées retournées dans les ACK des événements d'appel. */
-export const CallAckErrorCode = Type.Union([
-  Type.Literal("VALIDATION_FAILED"),
-  Type.Literal("UNAUTHENTICATED"),
-  Type.Literal("FORBIDDEN"),
-  Type.Literal("CONVERSATION_FORBIDDEN"),
-  Type.Literal("NOT_FOUND"),
-  Type.Literal("RATE_LIMITED"),
-  Type.Literal("INTERNAL_ERROR"),
-  Type.Literal("CALL_NOT_FOUND"),
-  Type.Literal("CALL_NOT_ACTIVE"),
-  Type.Literal("CALL_BUSY"),
-  Type.Literal("CALL_ALREADY_ENDED"),
-]);
-export type CallAckErrorCode = Static<typeof CallAckErrorCode>;
+export const CallAckErrorCode = ErrorCode;
+export type CallAckErrorCode = ErrorCodeType;
 
 export const CallQualityParams = Type.Object({ id: Uuid }, { additionalProperties: false });
 export type CallQualityParams = Static<typeof CallQualityParams>;
@@ -139,7 +129,7 @@ export type TurnCredentialsResponse = Static<typeof TurnCredentialsResponse>;
 /** ACK des événements d'appel : erreur métier explicite, sans détails internes. */
 export type CallAck<T> =
   | { ok: true; data: T }
-  | { ok: false; error: { code: CallAckErrorCode; message: string; requestId: string } };
+  | { ok: false; error: { code: ErrorCodeType; message: string; requestId: string } };
 
 /** Événements client → serveur pour les appels 1-1. */
 export interface CallClientToServerEvents {
@@ -157,4 +147,20 @@ export interface CallServerToClientEvents {
   "call:incoming": (event: CallIncomingEvent) => void;
   "call:accepted": (event: CallAcceptedEvent) => void;
   "call:ended": (event: CallEndedEvent) => void;
+  "rtc:offer": (event: RtcDescriptionEvent) => void;
+  "rtc:answer": (event: RtcDescriptionEvent) => void;
+  "rtc:ice-candidate": (event: RtcIceCandidateEvent) => void;
 }
+
+
+export const RtcDescriptionEvent = Type.Object(
+  { callId: Uuid, from: Uuid, sdp: Type.String({ minLength: 1, maxLength: 16_384 }) },
+  { additionalProperties: false },
+);
+export type RtcDescriptionEvent = Static<typeof RtcDescriptionEvent>;
+
+export const RtcIceCandidateEvent = Type.Object(
+  { callId: Uuid, from: Uuid, candidate: RtcIceCandidate },
+  { additionalProperties: false },
+);
+export type RtcIceCandidateEvent = Static<typeof RtcIceCandidateEvent>;
