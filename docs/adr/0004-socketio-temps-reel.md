@@ -4,13 +4,13 @@
 - **Date** : 2026-11-25
 - **Auteur (domaine)** : Theo (messagerie)
 - **Relecteur (autre domaine)** : Mathys (appels)
-- **Exigences concernées** : FR-05, FR-16, FR-17, FR-18, NFR-01, NFR-02, NFR-03, NFR-04, NFR-05
+- **Exigences concernées** : FR-05, FR-09, FR-10, FR-16, FR-17, FR-18, NFR-01, NFR-02, NFR-03, NFR-04, NFR-05
 
 ## Contexte
 
 L'application doit diffuser les nouveaux messages et les événements liés aux conversations en temps réel. Le même canal doit également permettre la signalisation nécessaire à l'établissement des appels WebRTC (échange des offres, réponses et candidats ICE), sans transporter les flux audio ou vidéo.
 
-Le serveur HTTP repose sur Fastify. L'authentification applicative utilise des jetons d'accès JWT et l'architecture doit pouvoir fonctionner sur plusieurs instances API. Les événements temps réel doivent être validés, autorisés et associés à des accusés de réception explicites.
+Le serveur HTTP repose sur Fastify. L'authentification applicative utilise des jetons d'accès JWT et l'architecture doit pouvoir fonctionner sur plusieurs instances API. Les événements temps réel doivent être validés, autorisés et associés à des accusés de réception explicites. La signalisation des appels doit rester séparée du transport des médias.
 
 Le temps réel ne constitue pas la source de vérité des messages : la persistance et la reprise après déconnexion sont traitées par les mécanismes décrits dans l'ADR-0008.
 
@@ -36,7 +36,7 @@ Les règles suivantes encadrent son utilisation :
 
 Le choix entre le transport WebSocket seul et le transport HTTP long-polling avec affinité de session (sticky sessions) reste ouvert. Il devra être arbitré et documenté dans l'ADR-0011, en tenant compte de l'infrastructure de déploiement et des contraintes du proxy.
 
-Cette décision formalise le choix architectural proposé. L'implémentation Socket.IO existe déjà dans l'API ; elle ne signifie pas que la signalisation d'appel ou les appels WebRTC sont déjà implémentés.
+Cette décision formalise le choix architectural proposé. À la date de rédaction, `apps/api/src/realtime/index.ts` attache Socket.IO au serveur HTTP Fastify sur `/socket.io`, vérifie le JWT au handshake, rejoint les rooms `user:<id>`, `session:<id>` et `conv:<id>` depuis la base, et active l'adapter Redis lorsque `redisUrl` est configuré. Les handlers de messagerie valident les payloads TypeBox et renvoient un ACK applicatif normalisé. Ces éléments décrivent le socle actuellement présent : les événements de signalisation `call:*` / `rtc:*`, les autorisations propres aux participants d'un appel et les appels WebRTC restent à implémenter. La décision ne doit donc pas être interprétée comme une livraison de la fonctionnalité d'appel.
 
 ## Conséquences
 
