@@ -63,14 +63,12 @@ jobs:
         run: pnpm --filter @chatisen/web exec playwright install --with-deps chromium
       - name: Démarrer coturn pour les appels WebRTC
         run: |
-          docker run -d --name chatisen-coturn \
-            -p 3478:3478/udp -p 3478:3478/tcp \
-            -p 49160-49200:49160-49200/udp \
+          docker run -d --network host --name chatisen-coturn \
             coturn/coturn:4.6.2 \
             -n --log-file=stdout --fingerprint --use-auth-secret \
             --static-auth-secret=chatisen-e2e-shared-secret-0123456789abcdef \
-            --realm=chatisen.test --listening-port=3478 --listening-ip=0.0.0.0 \
-            --relay-ip=0.0.0.0 --external-ip=127.0.0.1 \
+            --realm=chatisen.test --listening-port=3478 --listening-ip=127.0.0.1 \
+            --relay-ip=127.0.0.1 --external-ip=127.0.0.1 --allow-loopback-peers \
             --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli
           for i in $(seq 1 15); do
             if docker logs chatisen-coturn 2>&1 | grep -q "Listener address"; then exit 0; fi
