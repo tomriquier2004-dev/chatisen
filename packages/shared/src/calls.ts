@@ -89,6 +89,18 @@ export const CallEndedEvent = Type.Object(
 export type CallEndedEvent = Static<typeof CallEndedEvent>;
 
 /** Les SDP sont bornés pour éviter les payloads arbitrairement volumineux. */
+export const CallMediaStatePayload = Type.Object(
+  { callId: Uuid, to: Uuid, cameraEnabled: Type.Boolean() },
+  { additionalProperties: false },
+);
+export type CallMediaStatePayload = Static<typeof CallMediaStatePayload>;
+
+export const CallMediaStateEvent = Type.Object(
+  { callId: Uuid, from: Uuid, cameraEnabled: Type.Boolean() },
+  { additionalProperties: false },
+);
+export type CallMediaStateEvent = Static<typeof CallMediaStateEvent>;
+
 export const RtcDescriptionPayload = Type.Object(
   { callId: Uuid, to: Uuid, sdp: Type.String({ minLength: 1, maxLength: 16_384 }) },
   { additionalProperties: false },
@@ -137,6 +149,7 @@ export interface CallClientToServerEvents {
   "call:accept": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
   "call:reject": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
   "call:hangup": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
+  "call:media-state": (payload: CallMediaStatePayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
   "rtc:offer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
   "rtc:answer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
   "rtc:ice-candidate": (payload: RtcIceCandidatePayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
@@ -147,6 +160,7 @@ export interface CallServerToClientEvents {
   "call:incoming": (event: CallIncomingEvent) => void;
   "call:accepted": (event: CallAcceptedEvent) => void;
   "call:ended": (event: CallEndedEvent) => void;
+  "call:media-state": (event: CallMediaStateEvent) => void;
   "rtc:offer": (event: RtcDescriptionEvent) => void;
   "rtc:answer": (event: RtcDescriptionEvent) => void;
   "rtc:ice-candidate": (event: RtcIceCandidateEvent) => void;
