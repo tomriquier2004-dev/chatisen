@@ -106,7 +106,8 @@ test("un membre retiré cesse de recevoir les messages, sans recharger la page",
 
 test("après une coupure, la liste des conversations est rechargée (nouvelle conversation, aperçu, non-lus)", async ({
   browser,
-}) => {
+}, testInfo) => {
+  testInfo.setTimeout(60_000);
   const [pageA, pageB] = await Promise.all([openBrowser(browser), openBrowser(browser)]);
   const alice = newUser("alice");
   const bob = newUser("bob");
@@ -134,4 +135,4 @@ test("après une coupure, la liste des conversations est rechargée (nouvelle co
   const groupEntry = conversationButton(pageB, group);
   await expect(groupEntry).toContainText("message pendant la coupure");
   await expect(groupEntry.getByLabel("1 non lus")).toBeVisible();
-}, 60_000);
+});
