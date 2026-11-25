@@ -28,7 +28,13 @@ export async function startInstance(
   // Même câblage que server.ts : les routes REST préviennent le temps réel.
   const events = new RealtimeEvents();
   const app = buildApp(config, { ...deps, membershipEvents: events, sessionEvents: events });
-  await attachRealtime(app, { redisUrl, events, ...(rateLimit ? { rateLimit } : {}) });
+  await attachRealtime(app, {
+    redisUrl,
+    events,
+    callRingTimeoutSeconds: config.CALL_RING_TIMEOUT_SECONDS,
+    callDisconnectGraceSeconds: config.CALL_DISCONNECT_GRACE_SECONDS,
+    ...(rateLimit ? { rateLimit } : {}),
+  });
   await app.listen({ host: "127.0.0.1", port: 0 });
   const { port } = app.server.address() as AddressInfo;
   return { app, url: `http://127.0.0.1:${port}`, close: () => app.close() };
