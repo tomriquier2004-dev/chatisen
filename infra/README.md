@@ -93,6 +93,44 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 
 Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki. Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
 
+## Restreindre le SSH avec IAP (à faire, VM allumée pour tester)
+
+Aujourd'hui `default-allow-ssh` laisse le port 22 ouvert à tout Internet. Avec IAP (Identity-Aware Proxy), le SSH passe par un tunnel de Google authentifié par le compte Google : le port 22 n'est alors ouvert qu'aux adresses de Google (`35.235.240.0/20`). Les runners GitHub ont des adresses variables, impossibles à lister : IAP règle aussi ce point pour le futur déploiement.
+
+Respecter cet ordre, sinon on se verrouille dehors. Les étapes 1 à 4 s'ajoutent sans rien casser ; seule la 5 ferme l'accès actuel.
+
+1. Activer l'API :
+
+```powershell
+gcloud services enable iap.googleapis.com
+```
+
+2. Autoriser les adresses de Google sur le port 22 :
+
+```powershell
+gcloud compute firewall-rules create chatisen-ssh-iap --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=chatisen
+```
+
+3. Sha ou Tom donnent à chaque membre le rôle « Utilisateur de tunnel sécurisé par IAP » (`roles/iap.tunnelResourceAccessor`), un compte à la fois :
+
+```powershell
+gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE>" --role="roles/iap.tunnelResourceAccessor"
+```
+
+4. **Chacun** teste la connexion par le tunnel :
+
+```powershell
+gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
+```
+
+5. Seulement quand tout le monde a réussi, fermer l'accès ouvert à tout Internet :
+
+```powershell
+gcloud compute firewall-rules delete default-allow-ssh
+```
+
+Puis prouver la fermeture depuis un réseau qui laisse sortir le port 22 (la section ci-dessous distingue « filtré » et « refusé »), et consigner la sortie dans `docs/reports/`. Ensuite, ajouter `--tunnel-through-iap` aux commandes `gcloud compute ssh` de ce document. Le bouton « SSH » de la console devrait continuer de fonctionner, car il se connecte depuis des adresses de Google : à vérifier après la fermeture.
+
 ## Tester les ports et le TLS du point d'entrée (sans application)
 
 Prépare cette séance : la VM allumée coûte quelques centimes de l'heure, on éteint dès que les preuves sont prises.

@@ -56,9 +56,15 @@ B. **Un sous-domaine par service** (`api.`, `turn.`, `grafana.`) — séparation
 
 ## À vérifier avant de passer à « accepté »
 
-- [ ] Caddyfile et Caddyfile de test validés sur la VM (`caddy validate`).
-- [ ] Ports 80 et 443 joignables depuis l'extérieur ; 3389, 5432, 6379, 3000 et 9090 injoignables (sorties conservées dans `docs/reports/`).
-- [ ] Nom `dc-ops.isen.fedyna.fr` redirigé par le prof vers l'IP de la VM.
-- [ ] Certificat Let's Encrypt obtenu pour ce nom.
+Preuves de la séance du 25/11/2026 : [`docs/reports/ports-tls-2026-11-25.md`](../reports/ports-tls-2026-11-25.md).
+
+- [x] Caddyfile **de test** chargé par Caddy sur la VM, qui répond en HTTPS (la sortie de `caddy validate` n'a pas été conservée).
+- [ ] Caddyfile **de production** validé (il exige l'API et le build du client, pas encore déployés).
+- [x] Port 443 joignable depuis l'extérieur.
+- [ ] Port 80 joignable depuis l'extérieur (non prouvé séparément).
+- [ ] 3389, 5432, 6379, 3000 et 9090 injoignables, **depuis un réseau qui laisse sortir ces ports** : un réseau local restrictif donne des délais dépassés qui ne prouvent rien sur le pare-feu GCP.
+- [x] Nom `dc-ops.isen.fedyna.fr` redirigé par le prof vers l'IP de la VM (résolution vérifiée par `nslookup` via 8.8.8.8 et par `curl`).
+- [x] Certificat valide obtenu pour ce nom (accepté sans `-k` par `curl`).
+- [ ] Émetteur du certificat relevé (Caddy peut utiliser Let's Encrypt ou ZeroSSL, l'énoncé « Let's Encrypt » n'est donc pas prouvé).
 - [ ] coturn déployé et TURN testé depuis le réseau de la salle de démo.
 - [ ] `architecture.md` mis à jour.
