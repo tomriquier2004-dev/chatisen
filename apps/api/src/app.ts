@@ -16,6 +16,7 @@ import { noopSessionEvents, type SessionEvents } from "./modules/auth/events";
 import { authRoutes } from "./modules/auth/routes";
 import { noopMembershipEvents, type MembershipEvents } from "./modules/conversations/events";
 import { conversationRoutes } from "./modules/conversations/routes";
+import { callRoutes } from "./modules/calls/routes";
 import { messageRoutes } from "./modules/messages/routes";
 import { TokenService } from "./modules/auth/tokens";
 import { userRoutes } from "./modules/users/routes";
@@ -137,6 +138,7 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
       });
       await api.register(userRoutes, { authenticate });
       await api.register(messageRoutes, { authenticate });
+      await api.register(callRoutes, { authenticate, limits });
       await api.register(conversationRoutes, {
         authenticate,
         events: deps.membershipEvents ?? noopMembershipEvents,
