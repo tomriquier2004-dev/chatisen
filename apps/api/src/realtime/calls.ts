@@ -221,7 +221,7 @@ export class CallSignaling {
   private async hangup(userId: string, callId: string, reason: "hangup" | "failed", negotiationFailed: boolean): Promise<{ callId: string }> {
     const call = await this.getCall(callId);
     await this.requireConversationMember(call.conversation_id, userId);
-    if (negotiationFailed) callMetrics.recordNegotiationFailure();
+    if (negotiationFailed && reason === "failed") callMetrics.recordNegotiationFailure();
     const ended = await this.endCall(callId, reason);
     if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
     return { callId };
