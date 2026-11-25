@@ -464,7 +464,7 @@ Les images sont taguées avec le SHA du commit ; **un rollback = redéployer le 
 Version du 25 novembre 2026, après la review de Tom. Cette section sert à **transcrire l'architecture en code** : chaque flux a un numéro `Fxx`, une preuve et, en fin de section, le fichier ou la ressource qui le met en œuvre. Deux vues :
 
 - **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
-- **Cible** : load balancer réseau, VM TURN séparée, base sur Supabase, copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
+- **Cible** : load balancer réseau (**retenu par l'équipe**), VM TURN séparée et base sur Supabase (**à confirmer**), copie des sauvegardes hors de l'hôte. Rien n'est à faire avant J1.
 
 `<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
 
@@ -539,7 +539,7 @@ flowchart LR
     end
     subgraph GCP["Google Cloud, projet chatisen"]
         IP["IP statique chatisen-ip"]
-        LB["Load balancer réseau<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
+        LB["Load balancer réseau (retenu)<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
         IAP["IAP 35.235.240.0/20<br/>SSH et déploiement"]
         NAT["Cloud NAT<br/>sortie des VM (F18)"]
         FW["Pare-feu VPC<br/>chatisen-web, chatisen-turn, chatisen-ssh-iap<br/>default-allow-ssh supprimée"]
@@ -597,7 +597,7 @@ flowchart LR
 
 Il faut trancher ces deux points avec le prof (portée exacte de « pas sur la VM ») et Tom, puis le consigner dans `docs/prof-qa.md` et les ADR.
 
-**Coût de la vue cible** : le load balancer et Cloud NAT sont facturés à l'heure, y compris quand les VM sont éteintes (à vérifier dans le calculateur de prix GCP). Une alternative sans load balancer : donner à la VM TURN sa propre IP statique et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof), et laisser une IP externe aux deux VM pour se passer de Cloud NAT.
+**Load balancer retenu** : l'équipe retient le load balancer réseau de GCP pour la vue cible. Il est facturé à l'heure, y compris quand les VM sont éteintes, comme Cloud NAT (à vérifier dans le calculateur de prix GCP) : son coût est à suivre dans l'alerte de budget, et la règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé. Un load balancer réseau de type passthrough transmet TCP et UDP sans terminer le TLS : Caddy continue de gérer les certificats. Si le coût devenait un problème, l'alternative est une IP statique propre à la VM TURN et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof), sans Cloud NAT si les deux VM gardent une IP externe.
 
 #### Frontières de confiance
 
@@ -670,7 +670,7 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 
 - **ADR-0012 § 5 est périmé** : il liste les sous-domaines `api`, `turn` et `grafana`, que l'ADR-0016 a abandonnés (un seul nom d'hôte, routage par chemin, Grafana par tunnel SSH).
 - ADR-0011 (plusieurs instances : affinité ou WebSocket seul) est **ouvert** (`architecture.md`, tableau des ADR) et n'a pas de fichier.
-- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt.
+- La cible amende ADR-0006 (base), ADR-0012 (hôte unique, IP attachée à la VM) et ADR-0016 (coturn sur la même IP). L'ADR-0016 est sur `main` (statut « proposé ») ; l'ADR-0017 (base sur Supabase) n'existe pas encore dans le dépôt. L'ADR du load balancer et de Terraform (0018, numéro provisoire) reste à rédiger.
 
 #### Scalabilité future (limites et évolutions, sans implémenter avant le 11 décembre)
 
@@ -680,16 +680,18 @@ Un port fermé par le pare-feu ne répond pas (délai dépassé) ; un port ouver
 4. **TURN** : VM dédiée (cible), puis plusieurs serveurs avec le même secret HMAC ; un SFU pour les conférences (suspendu).
 5. **Observabilité hors de la VM applicative** ; le générateur de charge tourne déjà hors de l'hôte testé (ADR-0012).
 6. **Client statique sur un CDN ou un bucket**, Caddy ne gardant que l'API et les WebSocket.
-7. **Terraform** pour les ressources GCP (VM, pare-feu, IP, IAP, calendrier d'arrêt), créées à la main aujourd'hui (NFR-07).
+7. **Terraform retenu** pour décrire les ressources GCP (VM, pare-feu, IP, load balancer, IAP, calendrier d'arrêt), créées à la main aujourd'hui (NFR-07). Points à régler dans un ADR : où vit l'état Terraform (il contient des données sensibles et n'est jamais commité : `.gitignore` exclut déjà `*.tfstate`), import des ressources existantes (`terraform import`) ou recréation, et exécution depuis un poste puis depuis la CI sans clé de compte de service durable.
 8. **Au-delà d'un hôte** : groupe d'instances managé ou k3s derrière un load balancer Google, qui reprendrait le TLS et la protection DDoS.
 
 #### Transcription en code
 
+Les ressources GCP sont décrites en **Terraform**, dans `infra/terraform/` (à créer ; un ADR doit consigner ce choix). Les noms de types de ressources ci-dessous sont indicatifs et à confirmer à l'écriture.
+
 | Ligne(s) | Fichier ou ressource |
 | --- | --- |
-| F01-F06 | règles de pare-feu VPC `chatisen-web`, `chatisen-turn` ; en cible, règles de transfert du load balancer |
-| F07-F08 | règle `chatisen-ssh-iap` (source `35.235.240.0/20`), suppression de `default-allow-ssh` |
-| F10 | règle de pare-feu des sondes de santé, services de backend du load balancer (cible) |
+| F01-F06 | règles de pare-feu VPC `chatisen-web`, `chatisen-turn` (`google_compute_firewall`) ; en cible, règle de transfert et services de backend du load balancer |
+| F07-F08 | règle `chatisen-ssh-iap` (`google_compute_firewall`, source `35.235.240.0/20`), suppression de `default-allow-ssh` |
+| F10 | règle de pare-feu des sondes de santé, vérification de santé et service de backend du load balancer (cible) |
 | F11-F13 (J1) | `infra/compose/` : seul Caddy publie des ports |
 | F04-F06, F16 | `infra/coturn/turnserver.conf` (ports, `external-ip`, plage de relais, métriques) |
 | F13-F14, F21 | `DATABASE_URL`, `infra/backup/compose.yml`, cible de copie (#42) |
@@ -791,3 +793,4 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | ADR-0015 | Seuils de blocage du pipeline de sécurité | annoncé, pas dans le dépôt |
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
 | ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
+| ADR-0018 | Infrastructure as code (Terraform) et load balancer GCP | à rédiger (numéro provisoire) |
