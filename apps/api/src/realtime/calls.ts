@@ -61,7 +61,7 @@ export class CallSignaling {
     socket.on("call:reject", this.withLimit(socket, "call-action", 30, 60_000,
       this.handler(socket, CallIdPayload, async (payload: Static<typeof CallIdPayload>) => this.reject(userId, payload.callId))));
     socket.on("call:hangup", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallHangupPayload, async (payload: Static<typeof CallHangupPayload>) => this.hangup(userId, payload.callId, payload.reason ?? "hangup"))));
+      this.handler(socket, CallHangupPayload, async (payload: Static<typeof CallHangupPayload>) => this.hangup(userId, payload.callId, payload.reason ?? "hangup", payload.negotiationFailed ?? false))));
     socket.on("call:media-state", this.withLimit(socket, "call-action", 30, 60_000,
       this.handler(socket, CallMediaStatePayload, async (payload: Static<typeof CallMediaStatePayload>) => this.relayMediaState(userId, payload))));
     socket.on("rtc:offer", this.withLimit(socket, "rtc-signal", 120, 60_000,
@@ -218,10 +218,10 @@ export class CallSignaling {
     return { callId };
   }
 
-  private async hangup(userId: string, callId: string, reason: "hangup" | "failed"): Promise<{ callId: string }> {
+  private async hangup(userId: string, callId: string, reason: "hangup" | "failed", negotiationFailed: boolean): Promise<{ callId: string }> {
     const call = await this.getCall(callId);
     await this.requireConversationMember(call.conversation_id, userId);
-    if (reason === "failed") callMetrics.recordNegotiationFailure();
+    if (negotiationFailed) callMetrics.recordNegotiationFailure();
     const ended = await this.endCall(callId, reason);
     if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
     return { callId };
