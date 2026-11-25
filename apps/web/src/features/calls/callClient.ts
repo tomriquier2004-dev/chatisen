@@ -3,6 +3,7 @@ import {
   type CallAcceptedEvent,
   type CallAck,
   type CallIncomingEvent,
+  type CallInviteAck,
   type CallMedia,
   type CallEndedEvent,
   type RtcDescriptionEvent,
@@ -11,7 +12,6 @@ import {
   type RtcIceCandidatePayload,
   type IceCandidateType,
 } from "@chatisen/shared";
-import { api, realtime } from "../../app/services";
 import { ApiError } from "../../lib/errors";
 import type { ApiClient } from "../../lib/api";
 import type { ChatSocket } from "../../lib/socket";
@@ -30,8 +30,8 @@ const browserRuntime: CallRuntime = {
 export interface CallClientOptions {
   runtime?: CallRuntime;
   ackTimeoutMs?: number;
-  api?: ApiClient;
-  socket?: ChatSocket;
+  api: ApiClient;
+  socket: ChatSocket;
 }
 
 /** Pilote un appel WebRTC 1-1 ; la signalisation reste typée et autorisée par le serveur. */
@@ -52,8 +52,8 @@ export class CallClient {
   constructor(options: CallClientOptions = {}) {
     this.runtime = options.runtime ?? browserRuntime;
     this.ackTimeoutMs = options.ackTimeoutMs ?? 10_000;
-    this.apiClient = options.api ?? api;
-    this.socket = options.socket ?? realtime.socket;
+    this.apiClient = options.api;
+    this.socket = options.socket;
     this.socket.on("call:incoming", this.onIncoming);
     this.socket.on("call:accepted", this.onAccepted);
     this.socket.on("call:ended", this.onEnded);
@@ -78,7 +78,7 @@ export class CallClient {
     this.dispatch({ type: "outgoing", conversationId, peerId, media });
     try {
       await this.prepareLocalMedia(media);
-      const ack = await this.emitAck<import("@chatisen/shared").CallInviteAck>("call:invite", { conversationId, media });
+      const ack = await this.emitAck<CallInviteAck>("call:invite", { conversationId, media });
       this.assertAck(ack);
       this.dispatch({ type: "identified", callId: ack.data.callId });
       if (this.pendingAccepted?.callId === ack.data.callId) {
