@@ -22,7 +22,7 @@ Comparer les mesures WebRTC (RTT, jitter, perte de paquets, débit et type de ca
 4. Appliquer la dégradation sur le chemin réseau du client concerné ; répéter sur l'autre extrémité pour contrôler les deux directions. Noter l'interface, la machine, le sens et la configuration exacte.
 5. Prévoir au moins trois répétitions par scénario, avec une durée identique. Enregistrer le navigateur, le système, le codec si disponible, l'identifiant d'appel, les heures de début/fin et les interruptions observées.
 6. Restaurer le réseau après chaque essai : `tc qdisc del dev <interface> root`.
-7. Exporter les échantillons de `call_quality_samples` (le client envoie des lots toutes les 5 s à `POST /calls/:id/quality`) et leur associer le label expérimental degraded (0 pour le témoin, 1 pour un scénario dégradé). Le label décrit l'injection réseau, pas une vérité sur la qualité perçue. Ajouter séparément une note utilisateur si une mesure subjective est recueillie.
+7. Exporter les échantillons de `call_quality_samples` (le client collecte toutes les 5 s, envoie un lot après 6 échantillons (environ 30 s) à `POST /calls/:id/quality` et vide le reliquat au raccrochage) et leur associer le label expérimental degraded (0 pour le témoin, 1 pour un scénario dégradé). Le label décrit l'injection réseau, pas une vérité sur la qualité perçue. Ajouter séparément une note utilisateur si une mesure subjective est recueillie.
 
 Les commandes tc nécessitent Linux et les privilèges nécessaires. Utiliser un environnement de test isolé ; ne pas appliquer ces règles sur une interface de production.
 
