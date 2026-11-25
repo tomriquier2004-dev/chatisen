@@ -195,6 +195,52 @@ sudo docker compose -f compose.ports-test.yml down
 
 Le test des ports UDP du relais TURN (49152-49252) se fera avec coturn déployé, par Mathys.
 
+## Déployer le squelette (J1)
+
+Périmètre validé avec Tom : la CI **construit et publie les images** dans GHCR (workflow `images.yml`), et la VM est déployée **à la main** avec `docker compose`. Le déploiement automatique (F09) viendra après J1. Décision : [ADR-0020](../docs/adr/0020-registre-ghcr-et-deploiement-manuel-j1.md).
+
+**Testé** : en local, en HTTP (`SITE_ADDRESS=:80`), avec les images construites par `compose.build.yml` : les quatre services passent à « healthy », la page et `/api/v1/health/ready` répondent par Caddy, l'inscription et la connexion réussissent, `/metrics` n'est pas servi, et seul Caddy publie des ports. **Pas encore testé sur la VM** : le certificat HTTPS, le téléchargement des images depuis GHCR et les sauvegardes chiffrées.
+
+**Prérequis** : VM allumée, `nslookup dc-ops.isen.fedyna.fr` renvoie l'IP de la VM (sinon Caddy n'obtient pas de certificat et Let's Encrypt limite les essais ratés), les images sont **publiques** dans GHCR (réglage « Package visibility » à faire une fois par le propriétaire du dépôt), le dépôt est cloné sur la VM.
+
+1. Préparer les variables, hors dépôt, en lecture seule pour son propriétaire :
+
+```bash
+cd chatisen/infra/compose && cp .env.example .env && chmod 600 .env
+```
+
+Renseigner dans `.env` : `POSTGRES_PASSWORD` (`openssl rand -hex 24`, sans caractère spécial), `JWT_SECRET` (`openssl rand -base64 48`), `BACKUP_AGE_RECIPIENT` (clé **publique** age ; la clé privée n'est jamais sur la VM) et `IMAGE_TAG` (`sha-<12 premiers caractères du commit>` déployé, relevé dans l'onglet Packages ou dans le journal du workflow `Images`).
+
+2. Télécharger les images, puis démarrer :
+
+```bash
+sudo docker compose -f compose.prod.yml pull
+```
+
+```bash
+sudo docker compose -f compose.prod.yml up -d
+```
+
+3. Vérifier : tous les services doivent être « healthy », puis tester depuis l'extérieur.
+
+```bash
+sudo docker compose -f compose.prod.yml ps
+```
+
+```powershell
+curl.exe -i https://dc-ops.isen.fedyna.fr/api/v1/health/ready
+```
+
+Ouvrir ensuite `https://dc-ops.isen.fedyna.fr` : le cadenas doit être présent (le client exige un contexte sécurisé, issue #12), créer un compte et envoyer un message.
+
+4. **Mettre à jour** : changer `IMAGE_TAG`, refaire `pull` puis `up -d`. **Retour arrière** : remettre l'ancien `IMAGE_TAG`. Journaux : `sudo docker compose -f compose.prod.yml logs -f api caddy`.
+
+5. **Secours si GHCR est indisponible** : construire sur la VM avec l'override de build.
+
+```bash
+sudo docker compose -f compose.prod.yml -f compose.build.yml up -d --build
+```
+
 ## Accéder à Grafana (quand il sera déployé)
 
 Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM. Depuis ton PC, par tunnel SSH :
