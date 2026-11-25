@@ -401,6 +401,21 @@ describe("appels 1-1 et signalisation WebRTC", () => {
 
     const notMember = (await outsiderSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
     expect(notMember).toMatchObject({ ok: false, error: { code: "CONVERSATION_FORBIDDEN" } });
+
+    const incoming2 = nextEvent(bobSocket, "call:incoming");
+    const invite2 = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(invite2.ok).toBe(true);
+    if (!invite2.ok) return;
+    await incoming2;
+    const accepted = nextEvent(aliceSocket, "call:accepted");
+    await bobSocket.timeout(2000).emitWithAck("call:accept", { callId: invite2.data.callId });
+    await accepted;
+    const noOffer = noEvent(outsiderSocket, "rtc:offer");
+    const forbiddenRelay = (await aliceSocket.timeout(2000).emitWithAck("rtc:offer", {
+      callId: invite2.data.callId, to: outsider.user.id, sdp: "v=0",
+    })) as CallAck<{ relayed: true }>;
+    expect(forbiddenRelay).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    expect(await noOffer).toBe(true);
   });
 
   it("termine l'appel si un participant reste déconnecté au-delà du délai de grâce", async () => {
