@@ -1,0 +1,332 @@
+import { sql } from "kysely";
+import type { FastifyInstance } from "fastify";
+import type { Socket } from "socket.io";
+import {
+  CallIdPayload,
+  CallInvitePayload,
+  RtcDescriptionPayload,
+  RtcIceCandidatePayload,
+  type CallAck,
+  type CallInviteAck,
+  type ClientToServerEvents,
+  type ServerToClientEvents,
+} from "@chatisen/shared";
+import type { Db } from "../db";
+import { AppError, forbidden, notFound } from "../errors";
+import { requireMember } from "../modules/conversations/service";
+import type { RateLimiter } from "../plugins/rate-limit";
+import { conversationRoom, userRoom } from "./events";
+import type { IoServer, SocketData } from "./index";
+
+type CallSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
+type Logger = FastifyInstance["log"];
+
+export interface CallSignalingOptions {
+  ringTimeoutMs: number;
+  disconnectGraceMs: number;
+  limits?: { limiter: RateLimiter; enabled: boolean };
+}
+
+type CallEndReason = "hangup" | "rejected" | "timeout" | "busy" | "removed" | "disconnected" | "failed";
+
+/** Gestion des appels 1-1 et des relais SDP/ICE, partagée par toutes les sockets d'une instance. */
+export class CallSignaling {
+  private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
+  private readonly ringTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(
+    private readonly io: IoServer,
+    private readonly db: Db,
+    private readonly options: CallSignalingOptions,
+    private readonly log: Logger,
+  ) {}
+
+  attach(socket: CallSocket): void {
+    const userId = socket.data.userId;
+    const pendingDisconnect = this.disconnectTimers.get(userId);
+    if (pendingDisconnect) clearTimeout(pendingDisconnect);
+    this.disconnectTimers.delete(userId);
+
+    socket.on("call:invite", this.withLimit(socket, "call-invite", 5, 60_000,
+      this.handler(socket, CallInvitePayload, async (payload) => this.invite(userId, payload))));
+    socket.on("call:accept", this.withLimit(socket, "call-action", 30, 60_000,
+      this.handler(socket, CallIdPayload, async (payload) => this.accept(userId, payload.callId))));
+    socket.on("call:reject", this.withLimit(socket, "call-action", 30, 60_000,
+      this.handler(socket, CallIdPayload, async (payload) => this.reject(userId, payload.callId))));
+    socket.on("call:hangup", this.withLimit(socket, "call-action", 30, 60_000,
+      this.handler(socket, CallIdPayload, async (payload) => this.hangup(userId, payload.callId))));
+    socket.on("rtc:offer", this.withLimit(socket, "rtc-signal", 120, 60_000,
+      this.handler(socket, RtcDescriptionPayload, async (payload) => this.relayDescription(userId, "rtc:offer", payload))));
+    socket.on("rtc:answer", this.withLimit(socket, "rtc-signal", 120, 60_000,
+      this.handler(socket, RtcDescriptionPayload, async (payload) => this.relayDescription(userId, "rtc:answer", payload))));
+    socket.on("rtc:ice-candidate", this.withLimit(socket, "rtc-signal", 180, 60_000,
+      this.handler(socket, RtcIceCandidatePayload, async (payload) => this.relayCandidate(userId, payload))));
+
+    socket.once("disconnect", () => this.onDisconnect(userId));
+  }
+
+  async close(): Promise<void> {
+    for (const timer of [...this.disconnectTimers.values(), ...this.ringTimers.values()]) clearTimeout(timer);
+    this.disconnectTimers.clear();
+    this.ringTimers.clear();
+  }
+
+  private withLimit<P, R>(socket: CallSocket, name: string, limit: number, windowMs: number,
+    run: (payload: P, ack?: (result: CallAck<R>) => void) => void) {
+    return async (payload: P, ack?: (result: CallAck<R>) => void) => {
+      const limiter = this.options.limits;
+      if (limiter?.enabled) {
+        const result = await limiter.limiter.hit(`${name}:${socket.data.userId}`, limit, windowMs);
+        if (!result.allowed) {
+          ack?.({ ok: false, error: { code: "RATE_LIMITED", message: "Trop d'événements d'appel, réessayez plus tard", requestId: crypto.randomUUID() } });
+          return;
+        }
+      }
+      run(payload, ack);
+    };
+  }
+
+  private handler<S extends import("@sinclair/typebox").TSchema, P, R>(
+    socket: CallSocket,
+    schema: S,
+    run: (payload: P) => Promise<R>,
+  ) {
+    const { TypeCompiler } = requireTypeCompiler();
+    const check = TypeCompiler.Compile(schema);
+    return async (payload: unknown, ack?: (result: CallAck<R>) => void) => {
+      const requestId = crypto.randomUUID();
+      const fail = (code: import("@chatisen/shared").ErrorCode, message: string) =>
+        ack?.({ ok: false, error: { code, message, requestId } });
+      if (typeof ack !== "function") return;
+      if (!check.Check(payload)) {
+        fail("VALIDATION_FAILED", "Payload invalide");
+        return;
+      }
+      try {
+        ack({ ok: true, data: await run(payload as P) });
+      } catch (err) {
+        if (err instanceof AppError) return void fail(err.code, err.message);
+        this.log.error({ err, requestId, userId: socket.data.userId }, "call signaling handler failed");
+        fail("INTERNAL_ERROR", "Erreur interne du serveur");
+      }
+    };
+  }
+
+  private async invite(userId: string, payload: import("@chatisen/shared").CallInvitePayload): Promise<CallInviteAck> {
+    await requireMember(this.db, payload.conversationId, userId);
+    const conversation = await this.db
+      .selectFrom("conversations")
+      .select("type")
+      .where("id", "=", payload.conversationId)
+      .executeTakeFirst();
+    if (!conversation || conversation.type !== "private") throw forbidden("Les appels sont réservés aux conversations privées");
+
+    const members = await this.db
+      .selectFrom("conversation_members")
+      .select("user_id")
+      .where("conversation_id", "=", payload.conversationId)
+      .execute();
+    if (members.length !== 2) throw forbidden("Une conversation d'appel doit avoir exactement deux membres");
+    const targetId = members.find((member) => member.user_id !== userId)?.user_id;
+    if (!targetId) throw forbidden("Destinataire de l'appel introuvable");
+
+    const callId = await this.db.transaction().execute(async (trx) => {
+      // Sérialise les invitations qui partagent un participant, y compris vers d'autres conversations.
+      for (const id of [userId, targetId].sort()) {
+        await sql`select pg_advisory_xact_lock(hashtextextended(${id}, 0))`.execute(trx);
+      }
+      const active = await trx
+        .selectFrom("calls as c")
+        .innerJoin("conversation_members as m", "m.conversation_id", "c.conversation_id")
+        .select("c.id")
+        .where("m.user_id", "in", [userId, targetId])
+        .where("c.ended_at", "is", null)
+        .executeTakeFirst();
+      if (active) throw new AppError(409, "CALL_BUSY", "Un des participants est déjà en appel");
+
+      const call = await trx
+        .insertInto("calls")
+        .values({ conversation_id: payload.conversationId, media: payload.media, initiator_id: userId })
+        .returning("id")
+        .executeTakeFirstOrThrow();
+      // L'appelant est le premier participant ; l'appelé ne rejoint qu'après acceptation.
+      await trx.insertInto("call_participants").values({ call_id: call.id, user_id: userId }).execute();
+      return call.id;
+    });
+
+    this.io.to(userRoom(targetId)).emit("call:incoming", {
+      callId,
+      conversationId: payload.conversationId,
+      from: userId,
+      media: payload.media,
+    });
+    const timer = setTimeout(() => void this.expireIfRinging(callId), this.options.ringTimeoutMs);
+    this.ringTimers.set(callId, timer);
+    return { callId };
+  }
+
+  private async accept(userId: string, callId: string): Promise<{ callId: string }> {
+    const result = await this.db.transaction().execute(async (trx) => {
+      const call = await trx.selectFrom("calls").selectAll().where("id", "=", callId).forUpdate().executeTakeFirst();
+      if (!call) throw notFound("Appel introuvable", "CALL_NOT_FOUND");
+      if (call.ended_at) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
+      if (call.initiator_id === userId) throw forbidden("L'appelant ne peut pas accepter son propre appel");
+      const member = await trx.selectFrom("conversation_members").select("user_id")
+        .where("conversation_id", "=", call.conversation_id).where("user_id", "=", userId).executeTakeFirst();
+      if (!member) throw forbidden("Vous n'êtes pas le destinataire de cet appel");
+      const participants = await trx.selectFrom("call_participants").select("user_id")
+        .where("call_id", "=", callId).execute();
+      if (!participants.some((p) => p.user_id === call.initiator_id)) throw new AppError(409, "CALL_NOT_ACTIVE", "Appel non actif");
+      if (!participants.some((p) => p.user_id === userId)) {
+        await trx.insertInto("call_participants").values({ call_id: callId, user_id: userId }).execute();
+      }
+      return { conversationId: call.conversation_id, initiatorId: call.initiator_id };
+    });
+    this.emitToConversation(result.conversationId, "call:accepted", { callId, userId });
+    return { callId };
+  }
+
+  private async reject(userId: string, callId: string): Promise<{ callId: string }> {
+    const call = await this.getCall(callId);
+    if (call.initiator_id === userId) throw forbidden("L'appelant ne peut pas refuser son propre appel");
+    await this.requireConversationMember(call.conversation_id, userId);
+    const ended = await this.endCall(callId, "rejected");
+    if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
+    return { callId };
+  }
+
+  private async hangup(userId: string, callId: string): Promise<{ callId: string }> {
+    const call = await this.getCall(callId);
+    await this.requireConversationMember(call.conversation_id, userId);
+    const ended = await this.endCall(callId, "hangup");
+    if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
+    return { callId };
+  }
+
+  private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: import("@chatisen/shared").RtcDescriptionPayload): Promise<{ relayed: true }> {
+    const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
+    this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
+    return { relayed: true };
+  }
+
+  private async relayCandidate(userId: string, payload: import("@chatisen/shared").RtcIceCandidatePayload): Promise<{ relayed: true }> {
+    const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
+    this.io.to(userRoom(target)).emit("rtc:ice-candidate", { callId: payload.callId, from: userId, candidate: payload.candidate });
+    return { relayed: true };
+  }
+
+  private async authorizedRelayTarget(userId: string, callId: string, to: string): Promise<string> {
+    const call = await this.getCall(callId);
+    if (call.ended_at) throw new AppError(409, "CALL_NOT_ACTIVE", "Appel non actif");
+    const participants = await this.db.selectFrom("call_participants").select(["user_id", "left_at"])
+      .where("call_id", "=", callId).execute();
+    if (participants.length !== 2 || participants.some((p) => p.left_at !== null)) {
+      throw new AppError(409, "CALL_NOT_ACTIVE", "L'appel n'a pas été accepté ou n'est plus actif");
+    }
+    const others = participants.filter((p) => p.user_id !== userId);
+    if (others.length !== 1 || others[0]!.user_id !== to) throw forbidden("La cible n'est pas l'autre participant de cet appel");
+    return to;
+  }
+
+  private async getCall(callId: string) {
+    const call = await this.db.selectFrom("calls").selectAll().where("id", "=", callId).executeTakeFirst();
+    if (!call) throw notFound("Appel introuvable", "CALL_NOT_FOUND");
+    return call;
+  }
+
+  private async requireConversationMember(conversationId: string, userId: string): Promise<void> {
+    const member = await this.db.selectFrom("conversation_members").select("user_id")
+      .where("conversation_id", "=", conversationId).where("user_id", "=", userId).executeTakeFirst();
+    if (!member) throw forbidden("Vous n'êtes pas membre de cette conversation");
+  }
+
+  private async expireIfRinging(callId: string): Promise<void> {
+    this.ringTimers.delete(callId);
+    const participants = await this.db.selectFrom("call_participants").select("user_id").where("call_id", "=", callId).execute();
+    if (participants.length < 2) await this.endCall(callId, "timeout");
+  }
+
+  private async onDisconnect(userId: string): Promise<void> {
+    const previous = this.disconnectTimers.get(userId);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(async () => {
+      this.disconnectTimers.delete(userId);
+      try {
+        const sockets = await this.io.in(userRoom(userId)).fetchSockets();
+        if (sockets.length > 0) return;
+        const active = await this.db.selectFrom("calls as c")
+          .innerJoin("conversation_members as m", "m.conversation_id", "c.conversation_id")
+          .select("c.id")
+          .where("m.user_id", "=", userId)
+          .where("c.ended_at", "is", null)
+          .execute();
+        for (const call of active) await this.endCall(call.id, "disconnected");
+      } catch (err) {
+        this.log.error({ err, userId }, "failed to process call participant disconnect");
+      }
+    }, this.options.disconnectGraceMs);
+    this.disconnectTimers.set(userId, timer);
+  }
+
+  private async endCall(callId: string, reason: CallEndReason): Promise<boolean> {
+    const ended = await this.db.transaction().execute(async (trx) => {
+      const call = await trx.updateTable("calls")
+        .set({ ended_at: new Date(), end_reason: reason })
+        .where("id", "=", callId)
+        .where("ended_at", "is", null)
+        .returning("conversation_id")
+        .executeTakeFirst();
+      if (!call) return undefined;
+      await trx.updateTable("call_participants")
+        .set({ left_at: new Date() })
+        .where("call_id", "=", callId)
+        .where("left_at", "is", null)
+        .execute();
+      return call.conversation_id;
+    });
+    if (!ended) return false;
+    const members = await this.db.selectFrom("conversation_members").select("user_id")
+      .where("conversation_id", "=", ended).execute();
+    this.io.to(members.map((m) => userRoom(m.user_id))).emit("call:ended", { callId, reason });
+    this.io.to(conversationRoom(ended)).emit("call:ended", { callId, reason });
+    const timer = this.ringTimers.get(callId);
+    if (timer) clearTimeout(timer);
+    this.ringTimers.delete(callId);
+    return true;
+  }
+
+  private emitToConversation<T extends "call:accepted">(conversationId: string, event: T, payload: Parameters<IoServer["emit"]>[1]): void {
+    void conversationId;
+    void event;
+    void payload;
+  }
+}
+
+/** Termine les appels d'une conversation après le commit d'un retrait de membre (§ 5.3). */
+export async function endCallsForRemovedMember(db: Db, io: IoServer, conversationId: string, userId: string): Promise<void> {
+  const calls = await db.selectFrom("calls").select("id")
+    .where("conversation_id", "=", conversationId).where("ended_at", "is", null).execute();
+  for (const call of calls) {
+    const ended = await db.transaction().execute(async (trx) => {
+      const row = await trx.updateTable("calls")
+        .set({ ended_at: new Date(), end_reason: "removed" })
+        .where("id", "=", call.id).where("ended_at", "is", null)
+        .returning("id").executeTakeFirst();
+      if (!row) return false;
+      await trx.updateTable("call_participants").set({ left_at: new Date() })
+        .where("call_id", "=", call.id).where("left_at", "is", null).execute();
+      return true;
+    });
+    if (!ended) continue;
+    const members = await db.selectFrom("conversation_members").select("user_id")
+      .where("conversation_id", "=", conversationId).execute();
+    const recipients = [...new Set([...members.map((m) => m.user_id), userId])];
+    io.to(recipients.map(userRoom)).emit("call:ended", { callId: call.id, reason: "removed" });
+    io.to(conversationRoom(conversationId)).emit("call:ended", { callId: call.id, reason: "removed" });
+  }
+}
+
+// Avoid a runtime dependency cycle in type-only modules while keeping compiler construction local.
+function requireTypeCompiler() {
+  return { TypeCompiler: (globalThis as never) as never };
+}
