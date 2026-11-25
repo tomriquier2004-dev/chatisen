@@ -4,7 +4,7 @@
 - **Date** : 2026-11-25
 - **Auteur (domaine)** : Mathys (appels)
 - **Relecteur (autre domaine)** : Theo (messagerie)
-- **Exigences concernées** : FR-09, FR-10, FR-11, FR-13, NFR-01, NFR-02, NFR-03, NFR-04, NFR-06, NFR-07
+- **Exigences concernées** : FR-09, FR-10, FR-11, FR-13 (Adv), NFR-01, NFR-02, NFR-03, NFR-04, NFR-06, NFR-07
 
 ## Contexte
 
@@ -34,7 +34,7 @@ Le déroulement attendu est le suivant :
 
 ### Identifiants TURN et sécurité
 
-- Les identifiants TURN fournis aux clients doivent être temporaires, à durée de validité courte et générés ou signés côté serveur à partir d'un secret partagé avec coturn (mécanisme d'identifiants TURN temporaires, par exemple `use-auth-secret`).
+- Les identifiants TURN fournis aux clients doivent être temporaires, à durée de validité courte et générés côté API à partir du mécanisme REST de coturn (`use-auth-secret`) : un nom d'utilisateur portant une expiration et un mot de passe calculé par HMAC avec le secret partagé. La durée de vie doit être configurable et suffisamment courte pour limiter la fenêtre d'abus, sans expirer au milieu d'un appel normal ; elle devra être choisie et vérifiée en test.
 - Le secret partagé ne doit jamais être exposé au client. Les identifiants temporaires sont délivrés uniquement après authentification et contrôle de l'accès à l'appel.
 - Le serveur vérifie les droits des participants pour chaque action de signalisation pertinente. Il ne doit pas se fier à un identifiant d'appel fourni par le client sans vérifier l'appartenance à cet appel.
 - DTLS-SRTP protège les médias en transit, y compris lorsqu'ils sont relayés par TURN. Le relais observe des métadonnées nécessaires à l'acheminement (adresses, ports, volumes et temporalité du trafic), mais n'accède pas au contenu média en clair.
@@ -45,7 +45,7 @@ Cette décision couvre les appels audio et vidéo entre deux participants ainsi 
 
 Le feedback de qualité (FR-13) est un objectif avancé : les clients pourront exploiter les statistiques WebRTC disponibles via `getStats()` et des métriques d'appel pour observer la qualité. Cette décision ne présume pas que la collecte, l'affichage ou l'alerting correspondants sont déjà implémentés.
 
-Les détails de ports, de règles réseau et d'intégration au reverse proxy ne sont pas définis ici ; ils sont traités dans l'issue #8 et la documentation opérationnelle associée.
+Les détails de ports, de règles réseau et d'intégration au reverse proxy ne sont pas définis ici ; ils sont traités dans l'ADR-0016 et l'issue #8. Aucun port TURN n'est donc prescrit par cet ADR.
 
 ## Conséquences
 
@@ -58,6 +58,8 @@ Les détails de ports, de règles réseau et d'intégration au reverse proxy ne 
 
 ### Coûts et limites
 
+- **Limite du mesh** : pour `n` participants, un maillage complet nécessite `n(n-1)/2` connexions pair-à-pair et transporte jusqu'à `n(n-1)` flux média directionnels. Chaque participant doit envoyer son média aux `n-1` autres ; la bande passante montante et la charge CPU croissent donc avec le nombre de participants. Le mesh est adapté au périmètre 1-1, pas à une conférence de groupe.
+- Un **SFU** pourrait recevoir généralement un flux par participant puis le redistribuer aux autres : chaque client n'envoie alors qu'un flux montant au serveur, au prix d'un serveur média spécialisé, de sa bande passante, de sa supervision et d'une latence supplémentaire possible. Les conférences (FR-12) restent suspendues ; une évolution vers un SFU nécessitera un ADR distinct.
 - coturn doit être déployé, supervisé, mis à jour et protégé contre les usages abusifs. Les identifiants temporaires, les limites de ressources et les règles d'accès doivent être configurés correctement.
 - Un appel relayé consomme de la bande passante TURN, potentiellement dans les deux sens. Le coût dépendra de la proportion d'appels relayés, de leur durée et de la qualité des médias.
 - coturn constitue une dépendance de disponibilité pour les utilisateurs dont le réseau nécessite un relais. Si TURN est indisponible, les connexions directes peuvent toujours fonctionner, mais les appels nécessitant le relais échoueront.
