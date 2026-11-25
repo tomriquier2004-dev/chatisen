@@ -282,7 +282,7 @@ Le test doit être réalisé en dehors d'un appel réel. Consigner la date, le t
    ```bash
    sudo docker inspect --format '{{.State.Health.Status}}' chatisen-coturn
    sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml logs --tail=200 coturn
-   sudo ss -lunpt | grep -E ':(3478|491[5-9][0-9]|492[0-5][0-9]|49252)\\b'
+   sudo ss -lunpt | grep -E ':(3478|491[5-9][0-9]|492[0-5][0-9]|49252)\b'
    ```
 3. Vérifier l'IP publique statique, les règles firewall UDP/TCP 3478 et UDP 49152-49252, puis l'adresse privée configurée dans `TURN_INTERNAL_IP`.
 4. Si le processus est bloqué, recréer le service :
