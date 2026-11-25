@@ -112,10 +112,22 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
       .select(["candidate_type", sql<number>`count(*)`.as("samples")])
       .groupBy("candidate_type")
       .execute();
+    const callsByCandidate = await sql<{ candidate_type: string; calls: number }>`
+      SELECT candidate_type, COUNT(*)::int AS calls
+      FROM (
+        SELECT DISTINCT ON (call_id) call_id, candidate_type
+        FROM call_quality_samples
+        ORDER BY call_id, ts DESC
+      ) latest
+      GROUP BY candidate_type
+    `.execute(app.db);
     const qualityMetrics = [
       "# HELP chatisen_call_quality_samples_total Stored WebRTC quality samples by selected ICE candidate type.",
       "# TYPE chatisen_call_quality_samples_total counter",
       ...qualityRows.map((row) => `chatisen_call_quality_samples_total{candidate_type="${String(row.candidate_type).replaceAll('"', '\\"')}"} ${Number(row.samples)}`),
+      "# HELP chatisen_calls_by_ice_candidate_type Distinct calls classified by their latest selected ICE candidate.",
+      "# TYPE chatisen_calls_by_ice_candidate_type gauge",
+      ...callsByCandidate.rows.map((row) => `chatisen_calls_by_ice_candidate_type{candidate_type="${String(row.candidate_type).replaceAll('"', '\\"')}"} ${Number(row.calls)}`),
     ];
     return reply.type("text/plain; version=0.0.4; charset=utf-8")
       .send(callMetrics.render() + qualityMetrics.join("\n") + "\n");
