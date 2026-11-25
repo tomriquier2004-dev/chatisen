@@ -133,3 +133,27 @@ export const TurnCredentialsResponse = Type.Object(
   { additionalProperties: false },
 );
 export type TurnCredentialsResponse = Static<typeof TurnCredentialsResponse>;
+
+
+/** ACK des événements d'appel : erreur métier explicite, sans détails internes. */
+export type CallAck<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: CallAckErrorCode; message: string; requestId: string } };
+
+/** Événements client → serveur pour les appels 1-1. */
+export interface CallClientToServerEvents {
+  "call:invite": (payload: CallInvitePayload, ack: (result: CallAck<CallInviteAck>) => void) => void;
+  "call:accept": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
+  "call:reject": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
+  "call:hangup": (payload: CallIdPayload, ack: (result: CallAck<{ callId: string }>) => void) => void;
+  "rtc:offer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
+  "rtc:answer": (payload: RtcDescriptionPayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
+  "rtc:ice-candidate": (payload: RtcIceCandidatePayload, ack: (result: CallAck<{ relayed: true }>) => void) => void;
+}
+
+/** Événements serveur → client pour les appels 1-1. */
+export interface CallServerToClientEvents {
+  "call:incoming": (event: CallIncomingEvent) => void;
+  "call:accepted": (event: CallAcceptedEvent) => void;
+  "call:ended": (event: CallEndedEvent) => void;
+}
