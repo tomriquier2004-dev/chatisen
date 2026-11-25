@@ -80,7 +80,7 @@ export interface CallQualitySamplesTable {
   id: Generated<number>;
   call_id: string;
   user_id: string;
-  ts: Generated<Timestamp>;
+  ts: Timestamp;
   rtt_ms: number;
   jitter_ms: number;
   packet_loss_pct: number;
