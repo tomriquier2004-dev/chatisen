@@ -250,6 +250,7 @@ Convention : `domaine:action`. Les événements client → serveur utilisent l'*
 | C → S | `call:invite` | `{ conversationId, media }` → ack `{ callId }` | Démarrer un appel (FR-09, FR-10) |
 | S → C | `call:incoming` | `{ callId, conversationId, from, media }` | Sonnerie |
 | C → S | `call:accept` / `call:reject` / `call:hangup` | `{ callId }` → ack `{ callId }` | Cycle de vie de l'appel |
+| C ↔ S | `call:media-state` | `{ callId, to, cameraEnabled }` | État caméra relayé uniquement à l'autre participant (FR-11) |
 | S → C | `call:accepted` | `{ callId, userId }` | L'appelé a accepté ; l'ACK de l'invitation ne signifie pas que l'appel est établi |
 | C ↔ S | `rtc:offer` / `rtc:answer` | `{ callId, to, sdp }` | Signalisation SDP |
 | C ↔ S | `rtc:ice-candidate` | `{ callId, to, candidate }` | Candidats ICE |
