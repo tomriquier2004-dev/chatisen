@@ -52,7 +52,7 @@ describe("CallQualityCollector", () => {
         setInterval: ((callback: TimerHandler) => {
           tick = callback as () => void;
           return 1 as unknown as ReturnType<typeof setInterval>;
-        }) as typeof setInterval,
+        }) as unknown as typeof setInterval,
         clearInterval: vi.fn() as unknown as typeof clearInterval,
         now: () => new Date("2026-11-25T10:00:00.000Z"),
       },
