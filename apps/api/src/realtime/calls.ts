@@ -246,7 +246,6 @@ export class CallSignaling {
       this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
       return { relayed: true };
     } catch (error) {
-      callMetrics.recordNegotiationFailure();
       throw error;
     }
   }
