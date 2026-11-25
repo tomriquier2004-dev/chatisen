@@ -16,6 +16,7 @@ import { ApiError } from "../../lib/errors";
 import type { ApiClient } from "../../lib/api";
 import type { ChatSocket } from "../../lib/socket";
 import { transitionCallState, type CallFailure, type CallState } from "./callState";
+import { CallQualityCollector } from "./quality";
 
 export interface CallRuntime {
   getUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream>;
@@ -45,6 +46,7 @@ export class CallClient {
   private localValue: MediaStream | null = null;
   private remoteValue: MediaStream | null = null;
   private peer: RTCPeerConnection | null = null;
+  private quality: CallQualityCollector | null = null;
   private pendingIce: RTCIceCandidateInit[] = [];
   private pendingAccepted: CallAcceptedEvent | null = null;
   private pendingEnded: CallEndedEvent | null = null;
@@ -189,7 +191,13 @@ export class CallClient {
       this.notify();
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") this.dispatch({ type: "connected" });
+      if (pc.connectionState === "connected") {
+        this.dispatch({ type: "connected" });
+        if (!this.quality) {
+          this.quality = new CallQualityCollector(this.apiClient, callId, pc);
+          this.quality.start();
+        }
+      }
       if (pc.connectionState === "failed") void this.fail("ice-failed");
     };
     return pc;
@@ -319,6 +327,8 @@ export class CallClient {
   }
 
   private async cleanup(): Promise<void> {
+    await this.quality?.stop();
+    this.quality = null;
     this.peer?.close();
     this.peer = null;
     for (const track of this.localValue?.getTracks() ?? []) track.stop();
