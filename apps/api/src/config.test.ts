@@ -9,6 +9,7 @@ describe("loadConfig", () => {
       JWT_SECRET: config.JWT_SECRET,
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_DAYS: 30,
+      TURN_CREDENTIAL_TTL_SECONDS: 3600,
       NODE_ENV: "development",
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
@@ -48,6 +49,8 @@ describe("loadConfig", () => {
     const explicit = {
       JWT_SECRET: "x".repeat(48),
       DATABASE_URL: "postgres://chatisen:secret@db:5432/chatisen",
+      TURN_SHARED_SECRET: "turn-secret-".repeat(4),
+      TURN_URLS: "turn:turn.example.test:3478?transport=udp",
     };
 
     it("refuse de démarrer sur une adresse non locale avec la clé JWT ou la base de développement", () => {
@@ -58,6 +61,11 @@ describe("loadConfig", () => {
 
     it("démarre sur une adresse non locale quand les valeurs sensibles sont fournies", () => {
       expect(loadConfig({ API_HOST: "0.0.0.0", ...explicit }).API_HOST).toBe("0.0.0.0");
+    });
+
+    it("refuse un secret TURN absent ou de développement sur un hôte exposé", () => {
+      expect(() => loadConfig({ API_HOST: "0.0.0.0", ...explicit, TURN_SHARED_SECRET: undefined })).toThrow(/TURN_SHARED_SECRET/);
+      expect(() => loadConfig({ API_HOST: "0.0.0.0", ...explicit, TURN_SHARED_SECRET: "development".repeat(3) })).toThrow(/TURN_SHARED_SECRET/);
     });
 
     it("garde les valeurs de développement sur une adresse locale", () => {
