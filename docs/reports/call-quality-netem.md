@@ -31,10 +31,10 @@ Les commandes tc nécessitent Linux et les privilèges nécessaires. Utiliser un
 CSV attendu par le script :
 
 ~~~csv
-call_id,ts,rtt_ms,jitter_ms,packet_loss_pct,bitrate_kbps,candidate_type,degraded
+call_id,scenario,ts,rtt_ms,jitter_ms,packet_loss_pct,bitrate_kbps,candidate_type,degraded
 ~~~
 
-ts est un horodatage ISO-8601. candidate_type vaut host, srflx ou relay. Le label degraded est binaire et doit être renseigné à partir du scénario réellement appliqué.
+scenario identifie le scénario (baseline, latency, jitter, loss ou combined). ts est un horodatage ISO-8601 avec fuseau. candidate_type vaut host, srflx ou relay. Le label degraded est binaire et doit être renseigné à partir du scénario réellement appliqué (0 pour baseline, 1 pour les scénarios dégradés).
 
 ## Détecteurs comparés
 
@@ -60,7 +60,7 @@ Le JSON contient précision, rappel, F1, matrice de confusion et répartition de
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Témoin | À mesurer | À mesurer | À mesurer | À mesurer | À recueillir |
 | Latence | À mesurer | À mesurer | À mesurer | À mesurer | À recueillir |
-| Jitter | À mesurer | À mesurer | À mesurer | À recueillir | À recueillir |
+| Jitter | À mesurer | À mesurer | À mesurer | À mesurer | À recueillir |
 | Perte | À mesurer | À mesurer | À mesurer | À mesurer | À recueillir |
 | Combiné | À mesurer | À mesurer | À mesurer | À mesurer | À recueillir |
 
