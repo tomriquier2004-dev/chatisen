@@ -225,8 +225,10 @@ puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à 
 | `caddy/` | `Caddyfile` (production) et `Caddyfile.ports-test` (test sans application) |
 | `compose/` | `compose.dev.yml` (données de développement) et `compose.ports-test.yml` (test du point d'entrée) |
 | `github/` | Rulesets du dépôt décrits en code |
+| `coturn/` | Configuration et Compose du relais TURN dédié |
+| `observability/` | Prometheus, Grafana, dashboard et règles d'alerte |
 
-Pas encore là (issue #12) : Dockerfiles de l'API et du client, Compose de déploiement, coturn, Prometheus et Grafana, workflow de déploiement.
+Restent à finaliser : workflow de déploiement applicatif, provisionnement de la VM coturn après validation humaine, et test opérationnel des alertes sur l'infrastructure cible.
 
 ## Coturn sur une VM dédiée
 
@@ -271,3 +273,23 @@ sudo docker start chatisen-coturn
 ```
 
 Le test doit être réalisé en dehors d'un appel réel. Consigner la date, le temps de détection et le retour à l'état normal dans `docs/reports/`. Il n'a pas été exécuté depuis cette session : aucune VM TURN dédiée ni aucun destinataire d'alerte opérationnel n'est encore configuré.
+
+
+### Runbook court : coturn indisponible
+
+1. Vérifier l'alerte `CoturnUnavailable` et l'état de la cible dans Prometheus (`Status → Targets`).
+2. Sur la VM TURN, vérifier le conteneur et les journaux :
+   ```bash
+   sudo docker inspect --format '{{.State.Health.Status}}' chatisen-coturn
+   sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml logs --tail=200 coturn
+   sudo ss -lunpt | grep -E ':(3478|491[5-9][0-9]|492[0-5][0-9]|49252)\\b'
+   ```
+3. Vérifier l'IP publique statique, les règles firewall UDP/TCP 3478 et UDP 49152-49252, puis l'adresse privée configurée dans `TURN_INTERNAL_IP`.
+4. Si le processus est bloqué, recréer le service :
+   ```bash
+   sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml up -d --force-recreate coturn
+   curl --fail http://127.0.0.1:9641/metrics
+   ```
+5. Valider un nouvel appel depuis deux réseaux distincts et vérifier `candidateType=relay` dans `getStats()`. Ne pas basculer TURN sur 443 : ce port reste réservé à Caddy.
+
+Les appels P2P déjà établis peuvent continuer pendant une panne TURN ; les nouveaux appels derrière des NAT restrictifs risquent d'échouer. Si la VM ou son IP est perdue, restaurer l'IP statique avant de modifier `TURN_URLS` côté API.
