@@ -2,7 +2,6 @@ import {
   TurnCredentialsResponse,
   type CallAcceptedEvent,
   type CallAck,
-  type CallEndReason,
   type CallIncomingEvent,
   type CallMedia,
   type CallEndedEvent,
@@ -14,6 +13,8 @@ import {
 } from "@chatisen/shared";
 import { api, realtime } from "../../app/services";
 import { ApiError } from "../../lib/errors";
+import type { ApiClient } from "../../lib/api";
+import type { ChatSocket } from "../../lib/socket";
 import { transitionCallState, type CallFailure, type CallState } from "./callState";
 
 export interface CallRuntime {
@@ -29,6 +30,8 @@ const browserRuntime: CallRuntime = {
 export interface CallClientOptions {
   runtime?: CallRuntime;
   ackTimeoutMs?: number;
+  api?: ApiClient;
+  socket?: ChatSocket;
 }
 
 /** Pilote un appel WebRTC 1-1 ; la signalisation reste typée et autorisée par le serveur. */
@@ -37,6 +40,8 @@ export class CallClient {
   private readonly listeners = new Set<(state: CallState) => void>();
   private readonly runtime: CallRuntime;
   private readonly ackTimeoutMs: number;
+  private readonly apiClient: ApiClient;
+  private readonly socket: ChatSocket;
   private localValue: MediaStream | null = null;
   private remoteValue: MediaStream | null = null;
   private peer: RTCPeerConnection | null = null;
@@ -47,12 +52,14 @@ export class CallClient {
   constructor(options: CallClientOptions = {}) {
     this.runtime = options.runtime ?? browserRuntime;
     this.ackTimeoutMs = options.ackTimeoutMs ?? 10_000;
-    realtime.socket.on("call:incoming", this.onIncoming);
-    realtime.socket.on("call:accepted", this.onAccepted);
-    realtime.socket.on("call:ended", this.onEnded);
-    realtime.socket.on("rtc:offer", this.onOffer);
-    realtime.socket.on("rtc:answer", this.onAnswer);
-    realtime.socket.on("rtc:ice-candidate", this.onCandidate);
+    this.apiClient = options.api ?? api;
+    this.socket = options.socket ?? realtime.socket;
+    this.socket.on("call:incoming", this.onIncoming);
+    this.socket.on("call:accepted", this.onAccepted);
+    this.socket.on("call:ended", this.onEnded);
+    this.socket.on("rtc:offer", this.onOffer);
+    this.socket.on("rtc:answer", this.onAnswer);
+    this.socket.on("rtc:ice-candidate", this.onCandidate);
   }
 
   get state(): CallState { return this.stateValue; }
@@ -133,12 +140,12 @@ export class CallClient {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    realtime.socket.off("call:incoming", this.onIncoming);
-    realtime.socket.off("call:accepted", this.onAccepted);
-    realtime.socket.off("call:ended", this.onEnded);
-    realtime.socket.off("rtc:offer", this.onOffer);
-    realtime.socket.off("rtc:answer", this.onAnswer);
-    realtime.socket.off("rtc:ice-candidate", this.onCandidate);
+    this.socket.off("call:incoming", this.onIncoming);
+    this.socket.off("call:accepted", this.onAccepted);
+    this.socket.off("call:ended", this.onEnded);
+    this.socket.off("rtc:offer", this.onOffer);
+    this.socket.off("rtc:answer", this.onAnswer);
+    this.socket.off("rtc:ice-candidate", this.onCandidate);
     await this.cleanup();
     this.listeners.clear();
   }
@@ -149,7 +156,7 @@ export class CallClient {
   }
 
   private async prepareLocalMedia(media: CallMedia): Promise<void> {
-    const credentials = await api.request("GET", "/turn/credentials", TurnCredentialsResponse);
+    const credentials = await this.apiClient.request("GET", "/turn/credentials", TurnCredentialsResponse);
     this.localValue = await this.runtime.getUserMedia({ audio: true, video: media === "video" });
     this.notify();
     this.iceConfiguration = {
@@ -277,7 +284,7 @@ export class CallClient {
 
   private async emitAck<T>(event: string, payload: unknown): Promise<CallAck<T>> {
     try {
-      return (await realtime.socket.timeout(this.ackTimeoutMs).emitWithAck(event as never, payload as never)) as CallAck<T>;
+      return (await this.socket.timeout(this.ackTimeoutMs).emitWithAck(event as never, payload as never)) as CallAck<T>;
     } catch {
       throw new ApiError("NETWORK_ERROR", undefined);
     }
