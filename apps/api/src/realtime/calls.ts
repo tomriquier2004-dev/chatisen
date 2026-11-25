@@ -7,6 +7,7 @@ import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   CallIdPayload,
   CallInvitePayload,
+  CallHangupPayload,
   CallMediaStatePayload,
   RtcDescriptionPayload,
   RtcIceCandidatePayload,
@@ -64,7 +65,7 @@ export class CallSignaling {
     socket.on("call:reject", this.withLimit(socket, "call-action", 30, 60_000,
       this.handler(socket, CallIdPayload, async (payload) => this.reject(userId, payload.callId))));
     socket.on("call:hangup", this.withLimit(socket, "call-action", 30, 60_000,
-      this.handler(socket, CallIdPayload, async (payload) => this.hangup(userId, payload.callId))));
+      this.handler(socket, CallHangupPayload, async (payload) => this.hangup(userId, payload.callId, payload.reason ?? "hangup"))));
     socket.on("call:media-state", this.withLimit(socket, "call-action", 30, 60_000,
       this.handler(socket, CallMediaStatePayload, async (payload) => this.relayMediaState(userId, payload))));
     socket.on("rtc:offer", this.withLimit(socket, "rtc-signal", 120, 60_000,
@@ -221,10 +222,11 @@ export class CallSignaling {
     return { callId };
   }
 
-  private async hangup(userId: string, callId: string): Promise<{ callId: string }> {
+  private async hangup(userId: string, callId: string, reason: "hangup" | "failed"): Promise<{ callId: string }> {
     const call = await this.getCall(callId);
     await this.requireConversationMember(call.conversation_id, userId);
-    const ended = await this.endCall(callId, "hangup");
+    if (reason === "failed") callMetrics.recordNegotiationFailure();
+    const ended = await this.endCall(callId, reason);
     if (!ended) throw new AppError(409, "CALL_ALREADY_ENDED", "Cet appel est déjà terminé");
     return { callId };
   }
@@ -339,7 +341,7 @@ export class CallSignaling {
       return { conversationId: call.conversation_id, createdAt: call.created_at };
     });
     if (!ended) return false;
-    callMetrics.recordEnded(reason, (Date.now() - new Date(ended.createdAt).getTime()) / 1000);
+    callMetrics.recordEnded(reason, (Date.now() - Date.parse(String(ended.createdAt))) / 1000);
     const members = await this.db.selectFrom("conversation_members").select("user_id")
       .where("conversation_id", "=", ended.conversationId).execute();
     this.io.to(members.map((m) => userRoom(m.user_id))).emit("call:ended", { callId, reason });
@@ -376,7 +378,7 @@ export async function endCallsForRemovedMember(db: Db, io: IoServer, conversatio
       return true;
     });
     if (!ended) continue;
-    callMetrics.recordEnded("removed", (Date.now() - new Date(call.created_at).getTime()) / 1000);
+    callMetrics.recordEnded("removed", (Date.now() - Date.parse(String(call.created_at))) / 1000);
     const members = await db.selectFrom("conversation_members").select("user_id")
       .where("conversation_id", "=", conversationId).execute();
     const recipients = [...new Set([...members.map((m) => m.user_id), userId])];
