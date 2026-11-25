@@ -14,8 +14,8 @@ export function newUser(prefix: string): TestUser {
 }
 
 /** Ouvre un navigateur isolé (cookies et stockage propres), comme une seconde personne. */
-export async function openBrowser(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
+export async function openBrowser(browser: Browser, permissions: string[] = []): Promise<Page> {
+  const context = await browser.newContext({ permissions: permissions as ("microphone" | "camera")[] });
   return context.newPage();
 }
 
