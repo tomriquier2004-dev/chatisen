@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createPrivate, newUser, openBrowser, openConversation, register } from "./helpers";
+import { createGroup, createPrivate, newUser, openBrowser, openConversation, register } from "./helpers";
 
 test("appel vocal à deux navigateurs : acceptation, état connecté et raccrochage", async ({ browser }) => {
   const [pageA, pageB] = await Promise.all([
@@ -55,7 +55,7 @@ test("appel vidéo : image distante reçue et caméra coupée visible des deux c
   await pageA.screenshot({ path: testInfo.outputPath("call-dark.png") });
 
   await pageA.getByRole("button", { name: "Couper la caméra" }).click();
-  await expect(pageB.getByRole("status", { name: "" }).filter({ hasText: "Caméra de" })).toBeVisible();
+  await expect(pageB.getByText(/Caméra de .* coupée/)).toBeVisible();
   await expect(pageA.getByText("Votre caméra est coupée")).toBeVisible();
   await pageA.getByRole("button", { name: "Rétablir la caméra" }).click();
   await expect.poll(() => remoteVideo.evaluate((node) => (node as HTMLVideoElement).videoWidth), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -91,10 +91,7 @@ test("refus, absence de réponse et conversation de groupe sans action d'appel",
 
   await pageA.getByRole("button", { name: "Fermer" }).click();
   await pageB.getByRole("button", { name: "Fermer" }).click();
-  await pageA.getByRole("button", { name: "+ Créer une conversation" }).click();
-  await pageA.getByRole("radio", { name: "Groupe" }).click();
-  await pageA.getByLabel("Nom du groupe").fill("Groupe sans appels");
-  await pageA.getByRole("button", { name: "Créer le groupe" }).click();
+  await createGroup(pageA, "Groupe sans appels", [bob]);
   await expect(pageA.getByRole("button", { name: "Appel vocal" })).toHaveCount(0);
   await expect(pageA.getByRole("button", { name: "Appel vidéo" })).toHaveCount(0);
 });
