@@ -66,8 +66,8 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
-            if (incoming) void calls.reject();
-            else if (inCall || state.status === "outgoing") void calls.hangup();
+            if (incoming) void calls.reject().catch(() => undefined);
+            else if (inCall || state.status === "outgoing") void calls.hangup().catch(() => undefined);
           }
         }}
       >
@@ -86,10 +86,10 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
             <p>{media === "video" ? "Appel vidéo" : "Appel vocal"}</p>
             <p>{peerName} vous appelle.</p>
             <div class={styles.actions}>
-              <button ref={acceptRef} type="button" class={styles.primary} onClick={() => void calls.accept()}>
+              <button ref={acceptRef} type="button" class={styles.primary} onClick={() => void calls.accept().catch(() => undefined)}>
                 Accepter
               </button>
-              <button type="button" class={styles.danger} onClick={() => void calls.reject()}>
+              <button type="button" class={styles.danger} onClick={() => void calls.reject().catch(() => undefined)}>
                 Refuser
               </button>
             </div>
@@ -100,7 +100,7 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
           <div class={styles.incoming}>
             <p>{media === "video" ? "Appel vidéo…" : "Appel vocal…"}</p>
             <p>En attente de réponse</p>
-            <button type="button" class={styles.danger} onClick={() => void calls.hangup()}>
+            <button type="button" class={styles.danger} onClick={() => void calls.hangup().catch(() => undefined)}>
               Annuler l'appel
             </button>
           </div>
@@ -153,7 +153,7 @@ export function CallOverlay({ conversations }: CallOverlayProps) {
                     {calls.cameraEnabled ? "Couper la caméra" : "Rétablir la caméra"}
                   </button>
                 )}
-                <button type="button" class={styles.danger} onClick={() => void calls.hangup()}>
+                <button type="button" class={styles.danger} onClick={() => void calls.hangup().catch(() => undefined)}>
                   Raccrocher
                 </button>
               </div>
