@@ -56,8 +56,13 @@ function harness() {
     credential: "signature",
     ttl: 3600,
   })) };
-  const track = { stop: vi.fn() };
-  const stream = { getTracks: () => [track] } as unknown as MediaStream;
+  const track = { enabled: true, stop: vi.fn() };
+  const videoTrack = { enabled: true, stop: vi.fn() };
+  const stream = {
+    getTracks: () => [track, videoTrack],
+    getAudioTracks: () => [track],
+    getVideoTracks: () => [videoTrack],
+  } as unknown as MediaStream;
   const peer = makePeer();
   const runtime: CallRuntime = {
     getUserMedia: vi.fn(async () => stream),
@@ -69,7 +74,7 @@ function harness() {
     runtime,
     ackTimeoutMs: 100,
   });
-  return { client, socket, api, runtime, peer, track, stream };
+  return { client, socket, api, runtime, peer, track, videoTrack, stream };
 }
 
 describe("CallClient WebRTC", () => {
@@ -93,8 +98,15 @@ describe("CallClient WebRTC", () => {
     h.peer.connectionState = "connected";
     h.peer.onconnectionstatechange?.(new Event("connectionstatechange"));
     expect(h.client.state.status).toBe("connected");
+    const offersBeforeMute = h.socket.emitted.filter((e) => e.event === "rtc:offer").length;
+    expect(h.client.setMicrophoneEnabled(false)).toBe(true);
+    expect(h.client.setCameraEnabled(false)).toBe(true);
+    expect(h.client.microphoneEnabled).toBe(false);
+    expect(h.client.cameraEnabled).toBe(false);
+    expect(h.socket.emitted.filter((e) => e.event === "rtc:offer")).toHaveLength(offersBeforeMute);
     await h.client.hangup();
     expect(h.track.stop).toHaveBeenCalledOnce();
+    expect(h.videoTrack.stop).toHaveBeenCalledOnce();
     expect(h.peer.close).toHaveBeenCalledOnce();
     expect(h.client.state).toMatchObject({ status: "ended", reason: "hangup" });
   });
