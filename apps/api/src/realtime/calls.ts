@@ -26,6 +26,7 @@ import { requireMember } from "../modules/conversations/service";
 import type { RateLimiter } from "../plugins/rate-limit";
 import { userRoom } from "./events";
 import type { IoServer, SocketData } from "./index";
+import { callMetrics } from "./call-metrics";
 
 type CallSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 type Logger = FastifyInstance["log"];
@@ -172,7 +173,9 @@ export class CallSignaling {
       return { callId: call.id, busy: false };
     });
 
+    callMetrics.recordStarted();
     if (result.busy) {
+      callMetrics.recordEnded("busy", 0);
       this.io.to(userRoom(userId)).emit("call:ended", { callId: result.callId, reason: "busy" });
       return { callId: result.callId };
     }
@@ -204,6 +207,7 @@ export class CallSignaling {
       }
       return { conversationId: call.conversation_id };
     });
+    callMetrics.recordAccepted();
     await this.emitToConversation(result.conversationId, "call:accepted", { callId, userId });
     return { callId };
   }
@@ -236,9 +240,14 @@ export class CallSignaling {
   }
 
   private async relayDescription(userId: string, event: "rtc:offer" | "rtc:answer", payload: RtcDescriptionPayload): Promise<{ relayed: true }> {
-    const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
-    this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
-    return { relayed: true };
+    try {
+      const target = await this.authorizedRelayTarget(userId, payload.callId, payload.to);
+      this.io.to(userRoom(target)).emit(event, { callId: payload.callId, from: userId, sdp: payload.sdp });
+      return { relayed: true };
+    } catch (error) {
+      callMetrics.recordNegotiationFailure();
+      throw error;
+    }
   }
 
   private async relayCandidate(userId: string, payload: RtcIceCandidatePayload): Promise<{ relayed: true }> {
@@ -327,11 +336,12 @@ export class CallSignaling {
         .where("call_id", "=", callId)
         .where("left_at", "is", null)
         .execute();
-      return call.conversation_id;
+      return { conversationId: call.conversation_id, createdAt: call.created_at };
     });
     if (!ended) return false;
+    callMetrics.recordEnded(reason, (Date.now() - new Date(ended.createdAt).getTime()) / 1000);
     const members = await this.db.selectFrom("conversation_members").select("user_id")
-      .where("conversation_id", "=", ended).execute();
+      .where("conversation_id", "=", ended.conversationId).execute();
     this.io.to(members.map((m) => userRoom(m.user_id))).emit("call:ended", { callId, reason });
     const timer = this.ringTimers.get(callId);
     if (timer) clearTimeout(timer);
@@ -352,7 +362,7 @@ export class CallSignaling {
 
 /** Termine les appels d'une conversation après le commit d'un retrait de membre (§ 5.3). */
 export async function endCallsForRemovedMember(db: Db, io: IoServer, conversationId: string, userId: string): Promise<void> {
-  const calls = await db.selectFrom("calls").select("id")
+  const calls = await db.selectFrom("calls").select(["id", "created_at"])
     .where("conversation_id", "=", conversationId).where("ended_at", "is", null).execute();
   for (const call of calls) {
     const ended = await db.transaction().execute(async (trx) => {
@@ -366,6 +376,7 @@ export async function endCallsForRemovedMember(db: Db, io: IoServer, conversatio
       return true;
     });
     if (!ended) continue;
+    callMetrics.recordEnded("removed", (Date.now() - new Date(call.created_at).getTime()) / 1000);
     const members = await db.selectFrom("conversation_members").select("user_id")
       .where("conversation_id", "=", conversationId).execute();
     const recipients = [...new Set([...members.map((m) => m.user_id), userId])];
