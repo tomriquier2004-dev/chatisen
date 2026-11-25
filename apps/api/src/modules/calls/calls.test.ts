@@ -62,6 +62,7 @@ async function createCall(initiator: TestUser, recipient: TestUser, otherMember?
 }
 
 const sample = {
+  observedAt: new Date().toISOString(),
   rttMs: 48.5,
   jitterMs: 3.2,
   packetLossPct: 0.5,
@@ -150,6 +151,16 @@ describe("POST /calls/:id/quality (FR-13, NFR-04)", () => {
 
     expect((await as(alice)(callId, { samples: Array.from({ length: 61 }, () => sample) })).statusCode).toBe(400);
     expect((await as(alice)(callId, { samples: [{ ...sample, packetLossPct: 101 }] })).statusCode).toBe(400);
+  });
+
+  it("refuse les échantillons trop anciens ou horodatés dans le futur", async () => {
+    const alice = await createUser(t.app, "quality-timestamp");
+    const bob = await createUser(t.app, "quality-peer");
+    const callId = await createCall(alice, bob);
+    const stale = { ...sample, observedAt: new Date(Date.now() - 11 * 60_000).toISOString() };
+    const future = { ...sample, observedAt: new Date(Date.now() + 60_000).toISOString() };
+    expect((await as(alice)(callId, { samples: [stale] })).statusCode).toBe(400);
+    expect((await as(alice)(callId, { samples: [future] })).statusCode).toBe(400);
   });
 
   it("limite la fréquence des lots par utilisateur", async () => {
