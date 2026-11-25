@@ -20,6 +20,7 @@ import { callRoutes } from "./modules/calls/routes";
 import { turnRoutes } from "./modules/turn/routes";
 import { messageRoutes } from "./modules/messages/routes";
 import { TokenService } from "./modules/auth/tokens";
+import { callMetrics } from "./realtime/call-metrics";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
 import { MemoryRateLimiter, type RateLimiter } from "./plugins/rate-limit";
@@ -104,6 +105,21 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
     reply.code(404).send(errorBody("NOT_FOUND", `Route introuvable : ${request.method} ${request.url}`, request.id)),
   );
 
+  // Endpoint réservé au réseau interne Docker ; Caddy ne publie pas /metrics vers Internet.
+  app.get("/metrics", async (_request, reply) => {
+    const qualityRows = await app.db
+      .selectFrom("call_quality_samples")
+      .select(["candidate_type", sql<number>`count(*)`.as("samples")])
+      .groupBy("candidate_type")
+      .execute();
+    const qualityMetrics = [
+      "# HELP chatisen_call_quality_samples_total Stored WebRTC quality samples by selected ICE candidate type.",
+      "# TYPE chatisen_call_quality_samples_total counter",
+      ...qualityRows.map((row) => `chatisen_call_quality_samples_total{candidate_type="${String(row.candidate_type).replaceAll('"', '\\"')}"} ${Number(row.samples)}`),
+    ];
+    return reply.type("text/plain; version=0.0.4; charset=utf-8")
+      .send(callMetrics.render() + qualityMetrics.join("\n") + "\n");
+  });
   app.register(
     async (api) => {
       api.get(
