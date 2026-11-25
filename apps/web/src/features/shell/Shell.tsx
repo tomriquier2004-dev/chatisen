@@ -1,8 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
-import { realtime, signOut } from "../../app/services";
+import { calls, realtime, signOut } from "../../app/services";
 import type { Session } from "../../lib/api";
 import type { ConnectionState } from "../../lib/socket";
 import { ChatView } from "../chat/ChatView";
+import { CallOverlay } from "../calls/CallOverlay";
 import { MembersDialog } from "../conversations/MembersDialog";
 import { NewConversationDialog } from "../conversations/NewConversationDialog";
 import { previewOf, titleOf } from "../conversations/model";
@@ -110,6 +111,10 @@ export function Shell({ session }: { session: Session }) {
               if (seq > selected.lastReadSeq) state.read(selected.id, seq);
             }}
             onShowMembers={selected.type === "group" ? () => setDialog("members") : undefined}
+            onStartCall={selected.type === "private" ? (media) => {
+              const peerId = selected.members.find((member) => member.user.id !== meId)?.user.id;
+              if (peerId) void calls.start(selected.id, peerId, media).catch(() => undefined);
+            } : undefined}
           />
         ) : (
           <p class={styles.placeholder}>Sélectionnez ou créez une conversation.</p>
@@ -139,6 +144,7 @@ export function Shell({ session }: { session: Session }) {
           }}
         />
       )}
+      <CallOverlay conversations={state.conversations} />
     </div>
   );
 }
