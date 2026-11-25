@@ -30,7 +30,7 @@ class QualityAnalysisTests(unittest.TestCase):
 
     def test_ewma_state_is_isolated_per_call(self):
         path = self.write_csv([
-            {"call_id":"a","ts":"2026-11-25T10:00:00Z","rtt_ms":250,"jitter_ms":2,"packet_loss_pct":0,"bitrate_kbps":700,"candidate_type":"relay","degraded":1},
+            {"call_id":"a","scenario":"loss","ts":"2026-11-25T10:00:00Z","rtt_ms":250,"jitter_ms":2,"packet_loss_pct":0,"bitrate_kbps":700,"candidate_type":"relay","degraded":1},
             {"call_id":"b","scenario":"baseline","ts":"2026-11-25T10:00:01Z","rtt_ms":20,"jitter_ms":2,"packet_loss_pct":0,"bitrate_kbps":900,"candidate_type":"host","degraded":0},
         ])
         result = evaluate(load_samples(path), alpha=0.5)
@@ -39,7 +39,7 @@ class QualityAnalysisTests(unittest.TestCase):
 
     def test_rejects_invalid_packet_loss(self):
         path = self.write_csv([
-            {"call_id":"a","ts":"2026-11-25T10:00:00Z","rtt_ms":50,"jitter_ms":2,"packet_loss_pct":101,"bitrate_kbps":900,"candidate_type":"host","degraded":0},
+            {"call_id":"a","scenario":"baseline","ts":"2026-11-25T10:00:00Z","rtt_ms":50,"jitter_ms":2,"packet_loss_pct":101,"bitrate_kbps":900,"candidate_type":"host","degraded":0},
         ])
         with self.assertRaisesRegex(ValueError, "packet_loss_pct"):
             load_samples(path)
