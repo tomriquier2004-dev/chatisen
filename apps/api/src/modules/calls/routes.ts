@@ -1,6 +1,6 @@
 import type { FastifyInstance, onRequestAsyncHookHandler } from "fastify";
 import { CallQualityParams, CallQualityRequest, CallQualityResponse } from "@chatisen/shared";
-import { forbidden, notFound } from "../../errors";
+import { AppError, forbidden, notFound } from "../../errors";
 import { requireAuth } from "../../plugins/authenticate";
 import { RATE_RULES, rateLimit, type RateLimiter } from "../../plugins/rate-limit";
 
@@ -47,20 +47,24 @@ export async function callRoutes(app: FastifyInstance, opts: CallRoutesOptions):
       if (!participant || call.ended_at) throw forbidden("Seul un participant actif de cet appel peut envoyer ses mesures");
 
       // user_id n'est jamais accepté dans le DTO : le client ne peut pas usurper un autre participant.
-      await db
-        .insertInto("call_quality_samples")
-        .values(
-          samples.map((sample) => ({
+      const now = Date.now();
+      const values = samples.map((sample) => {
+        const observedAt = Date.parse(sample.observedAt);
+        if (!Number.isFinite(observedAt) || observedAt > now + 30_000 || observedAt < now - 10 * 60_000) {
+          throw new AppError(400, "VALIDATION_FAILED", "Horodatage de mesure invalide ou trop ancien");
+        }
+        return {
             call_id: callId,
             user_id: userId,
+            ts: new Date(observedAt),
             rtt_ms: sample.rttMs,
             jitter_ms: sample.jitterMs,
             packet_loss_pct: sample.packetLossPct,
             bitrate_kbps: sample.bitrateKbps,
             candidate_type: sample.candidateType,
-          })),
-        )
-        .execute();
+          };
+      });
+      await db.insertInto("call_quality_samples").values(values).execute();
 
       reply.code(202);
       return { accepted: samples.length };
