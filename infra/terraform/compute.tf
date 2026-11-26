@@ -112,9 +112,14 @@ resource "google_compute_instance" "web" {
     provisioning_model  = "STANDARD"
   }
 
+  # Changer les scopes impose d'arrêter la VM (environ une minute) : Terraform le fait lui-même.
+  allow_stopping_for_update = true
+
   service_account {
-    email  = google_service_account.vm.email
-    scopes = []
+    email = google_service_account.vm.email
+    # Les droits réels viennent des rôles IAM du compte (iam.tf) ; le scope large est la pratique recommandée
+    # par Google. Nécessaire au Cloud SQL Auth Proxy (ADR-0021).
+    scopes = ["cloud-platform"]
   }
 
   shielded_instance_config {
