@@ -45,7 +45,7 @@ gcloud compute instances start chatisen-prod --zone=europe-west1-b
 ```
 
 ```powershell
-gcloud compute ssh chatisen-prod --zone=europe-west1-b
+gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
 ```
 
 Éteindre en fin de session :
@@ -86,8 +86,7 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | 3478 | UDP et TCP | `chatisen-turn` | coturn | ouvert, rien n'écoute avant le déploiement de coturn |
 | 5349 | TCP | _retiré de `chatisen-turn` par Terraform_ | coturn en TLS | fermé (ADR-0016) |
 | 49152-49252 | UDP | `chatisen-turn` | relais média de coturn | ouvert, rien n'écoute avant coturn |
-| 22 | TCP | _`default-allow-ssh` supprimée le 26/11/2026_ | SSH ouvert à Internet | fermé |
-| 22 | TCP | `chatisen-ssh-iap` | SSH par IAP, source `35.235.240.0/20` | créée par Terraform |
+| 22 | TCP | `chatisen-ssh-iap` | SSH (OS Login, clé) par IAP | restreint à `35.235.240.0/20` ; `default-allow-ssh` supprimée le 2026-11-26 ([rapport](../docs/reports/ssh-iap-et-rollback-2026-11-26.md)) |
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
 | 3389 | TCP | _supprimée le 25/11/2026_ | RDP | fermé |
@@ -95,9 +94,9 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 
 Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki et les métriques coturn (9641, privées uniquement). Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
 
-## Restreindre le SSH avec IAP (à faire, VM allumée pour tester)
+## Restreindre le SSH avec IAP (fait le 2026-11-26)
 
-Aujourd'hui `default-allow-ssh` laisse le port 22 ouvert à tout Internet. Avec IAP (Identity-Aware Proxy), le SSH passe par un tunnel de Google authentifié par le compte Google : le port 22 n'est alors ouvert qu'aux adresses de Google (`35.235.240.0/20`). Les runners GitHub ont des adresses variables, impossibles à lister : IAP règle aussi ce point pour le futur déploiement.
+Avant le 2026-11-26, `default-allow-ssh` laissait le port 22 ouvert à tout Internet ; elle est supprimée et **toutes les connexions SSH passent par IAP** (`--tunnel-through-iap`). Procédure, à rejouer pour un nouveau membre ou un nouveau projet. Avec IAP (Identity-Aware Proxy), le SSH passe par un tunnel de Google authentifié par le compte Google : le port 22 n'est alors ouvert qu'aux adresses de Google (`35.235.240.0/20`). Les runners GitHub ont des adresses variables, impossibles à lister : IAP règle aussi ce point pour le futur déploiement.
 
 Respecter cet ordre, sinon on se verrouille dehors. Les étapes 1 à 4 s'ajoutent sans rien casser ; seule la 5 ferme l'accès actuel.
 
@@ -240,7 +239,7 @@ sudo IMAGE_TAG=local docker compose -f compose.prod.yml -f compose.build.yml up 
 Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM. Depuis ton PC, par tunnel SSH :
 
 ```powershell
-gcloud compute ssh chatisen-prod --zone=europe-west1-b -- -L 3000:localhost:3000
+gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap -- -L 3000:localhost:3000
 ```
 
 puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à l'avance ou projeter des captures.
