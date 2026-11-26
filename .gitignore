@@ -18,6 +18,9 @@ secrets/
 *.tfstate
 *.tfstate.*
 .terraform/
+*.tfvars
+!*.tfvars.example
+crash.log
 
 # OS / éditeurs
 .DS_Store

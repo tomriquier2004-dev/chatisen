@@ -6,7 +6,7 @@ Les règles de protection sont décrites ici, relues en PR, puis **appliquées p
 | --- | --- |
 | `rulesets/main.json` | `main` : PR obligatoire (1 approbation, revue des propriétaires de code, approbation annulée si le code change), checks requis (`PR hygiene`, `Semgrep (SAST)`), branche à jour, historique linéaire, pas de force-push ni de suppression, **aucun contournement** |
 | `rulesets/tags-v.json` | Tags `v*` : suppression et déplacement interdits |
-| `../../.github/CODEOWNERS` | `.github/workflows/` et `infra/` exigent l'approbation de Sha ou de Tom |
+| `../../.github/CODEOWNERS` | `.github/workflows/` et `infra/` exigent l'approbation de Sha, de Tom ou de Théo |
 
 ## Appliquer (propriétaire)
 

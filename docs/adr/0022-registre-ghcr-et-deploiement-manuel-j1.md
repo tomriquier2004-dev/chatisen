@@ -52,8 +52,8 @@ C. **La VM tire elle-même les nouvelles images** — évite d'ouvrir un accès 
 ## À vérifier avant de passer à « accepté »
 
 - [x] Le workflow `Images` est vert sur une pull request (build et Trivy des trois images).
-- [ ] Les images sont publiées sur `main` et leur visibilité est publique.
-- [ ] Déploiement sur la VM : `pull`, `up -d`, services « healthy », HTTPS avec certificat valide.
-- [ ] Inscription, connexion et envoi d'un message sur le nom de domaine, en HTTPS.
-- [ ] Sauvegarde chiffrée produite sur la VM (clé publique age fournie).
+- [x] Les images sont publiées sur `main` et leur visibilité est publique (vérifié le 2026-11-26 : le manifeste `main` des trois images répond 200 sans authentification).
+- [x] Déploiement sur la VM : `pull`, `up -d`, services « healthy », HTTPS avec certificat valide ([rapport du 2026-11-26](../reports/deploiement-j1-2026-11-26.md)).
+- [x] Inscription, connexion et envoi d'un message sur le nom de domaine, en HTTPS (test manuel déclaré par l'équipe, 2026-11-26).
+- [x] Sauvegarde chiffrée produite sur la VM (clé publique age fournie). Le déchiffrement avec la clé privée n'a pas été testé.
 - [ ] Exception Trivy sur Caddy revue à la date prévue.
