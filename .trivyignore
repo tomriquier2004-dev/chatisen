@@ -1,0 +1,9 @@
+# Exceptions du scan Trivy (.github/workflows/images.yml). Une ligne par identifiant (CVE-…),
+# précédée d'un commentaire qui donne : la justification, la date d'ajout et la date de revue.
+
+# golang.org/x/net/html v0.60.0 dans le binaire de Caddy 2.11.9 (image du client). Déni de service par une
+# entrée HTML forgée ; correctif en x/net 0.62.0, pas encore repris par une version de Caddy (2.11.9 est la
+# dernière au 2026-11-25). Notre configuration n'interprète aucun HTML fourni par un client : Caddy sert des
+# fichiers statiques et relaie /api et /socket.io (ni directive « templates », ni « browse »).
+# Ajoutée le 2026-11-25, à revoir le 2026-12-02 : retirer dès qu'une version de Caddy corrige la faille.
+CVE-2026-78661
