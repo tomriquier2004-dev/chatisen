@@ -33,6 +33,18 @@ github.com:22  OUVERT       (contrôle positif)
 
 Le test ne distingue pas « refusé » de « filtré ».
 
+Complément du même jour, après le retrait de `default-allow-ssh` du code Terraform (PR #171, `terraform plan` sans changement), avec nmap, qui distingue les deux cas :
+
+```text
+nmap -Pn -p 22 github.com                     22/tcp open      (contrôle positif)
+nmap -Pn -p 22,80,443,3478,5349 <VM>          22/tcp filtered  (le pare-feu jette le paquet)
+                                              80/tcp, 443/tcp open
+                                              3478/tcp, 5349/tcp closed
+nmap -Pn --reason -p 3478,5349,12345 <VM>     closed, reset ttl 254 pour les trois
+```
+
+Le port 22 est `filtered` alors que le même réseau atteint `github.com:22` : aucune règle ne l'ouvre depuis Internet. En revanche, `closed` sur 3478, 5349 et aussi sur 12345 (port quelconque), avec un TTL de 254, indique un refus envoyé par un équipement du réseau de test, pas par la VM : ces trois résultats ne prouvent rien sur le pare-feu GCP. La fermeture de 5349 repose sur la règle `chatisen-turn` (tcp:3478, udp:3478, udp:49152-49252).
+
 ## Essai de rollback
 
 Le rollback consiste à remettre ensemble l'ancienne configuration (`git checkout <commit>`) et l'ancien `IMAGE_TAG`, puis `pull` et `up -d` (runbook, ADR-0022).
