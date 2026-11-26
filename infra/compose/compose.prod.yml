@@ -54,6 +54,9 @@ services:
       TRUST_PROXY: "true"
       # Cookie de refresh Secure : le client est servi en HTTPS (contexte sécurisé, issue #12).
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Sur un hôte exposé, l'API refuse de démarrer sans secret TURN (32 caractères minimum, le même que coturn) ni URL TURN.
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:?TURN_SHARED_SECRET requis (32 caractères minimum)}
+      TURN_URLS: ${TURN_URLS:?TURN_URLS requis (stun:… et turn:…)}
     depends_on:
       postgres:
         condition: service_healthy
