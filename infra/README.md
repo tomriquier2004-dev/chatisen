@@ -209,7 +209,7 @@ Périmètre validé avec Tom : la CI **construit et publie les images** dans GHC
 cd chatisen/infra/compose && cp .env.example .env && chmod 600 .env
 ```
 
-Renseigner dans `.env` : `POSTGRES_PASSWORD` (`openssl rand -hex 24`, sans caractère spécial), `JWT_SECRET` (`openssl rand -base64 48`), `BACKUP_AGE_RECIPIENT` (clé **publique** age ; la clé privée n'est jamais sur la VM) et `IMAGE_TAG` (`sha-<12 premiers caractères du commit>` déployé, relevé dans l'onglet Packages ou dans le journal du workflow `Images`).
+Renseigner dans `.env` : `POSTGRES_PASSWORD` (`openssl rand -hex 24`, sans caractère spécial), `JWT_SECRET` (`openssl rand -base64 48`), `TURN_SHARED_SECRET` (`openssl rand -hex 32` ; **le même** que celui de coturn, à remplacer quand coturn est déployé, #117) et `TURN_URLS` (déjà renseignée dans `.env.example`), `BACKUP_AGE_RECIPIENT` (clé **publique** age ; la clé privée n'est jamais sur la VM) et `IMAGE_TAG` (`sha-<12 premiers caractères du commit>` déployé, relevé dans l'onglet Packages ou dans le journal du workflow `Images`).
 
 2. Télécharger les images, puis démarrer :
 
@@ -274,6 +274,7 @@ puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à 
 | `github/` | Rulesets du dépôt décrits en code |
 | `coturn/` | Configuration et Compose du relais TURN dédié |
 | `observability/` | Prometheus, Grafana, dashboard et règles d'alerte |
+| `terraform/` | Ressources GCP décrites en code (ADR-0018) : reprise des ressources existantes, non appliquée |
 
 Restent à finaliser : workflow de déploiement applicatif, provisionnement de la VM coturn après validation humaine, et test opérationnel des alertes sur l'infrastructure cible.
 

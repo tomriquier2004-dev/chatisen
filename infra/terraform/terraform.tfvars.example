@@ -1,0 +1,2 @@
+# Copier en terraform.tfvars (ignoré par Git) et renseigner. Aucune vraie valeur ici.
+project_id = ""
