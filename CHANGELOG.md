@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.4.0...v0.5.0) (2026-11-26)
+
+
+### Fonctionnalités
+
+* **api:** add Microsoft Entra ID sign-in ([#137](https://github.com/tomriquier2004-dev/chatisen/issues/137)) ([05f6988](https://github.com/tomriquier2004-dev/chatisen/commit/05f69888f99bb89503a89061501bf0bd87c2ee08))
+* **calls:** implement 1-1 WebRTC calls and quality observability ([#124](https://github.com/tomriquier2004-dev/chatisen/issues/124)) ([58d81b7](https://github.com/tomriquier2004-dev/chatisen/commit/58d81b7bd7adac271f22e9701131f6e08cf7b87c))
+
+
+### Documentation
+
+* **adr:** propose ADR-0017 Cloud SQL for PostgreSQL and record prof guidance ([#135](https://github.com/tomriquier2004-dev/chatisen/issues/135)) ([68ab3ea](https://github.com/tomriquier2004-dev/chatisen/commit/68ab3ea501ce7d4b558093151574ae4d828eda64))
+* **adr:** propose ADR-0018 and align ADR-0012, ADR-0016, README and report ([#131](https://github.com/tomriquier2004-dev/chatisen/issues/131)) ([ff122f4](https://github.com/tomriquier2004-dev/chatisen/commit/ff122f40557a57fbbd139db394b57bb273afe1cc))
+* **adr:** propose ADR-0021 IAM identities instead of Secret Manager ([#141](https://github.com/tomriquier2004-dev/chatisen/issues/141)) ([a4c3070](https://github.com/tomriquier2004-dev/chatisen/commit/a4c30703731ea76f5e6949e12726309786ba13c7))
+* **architecture:** add network flows, J1 and target views, align coturn and hosting ([#126](https://github.com/tomriquier2004-dev/chatisen/issues/126)) ([e81dcaa](https://github.com/tomriquier2004-dev/chatisen/commit/e81dcaaf38bf43073498898010935309d6cd0b78))
+* **architecture:** record load balancer and Terraform decisions ([#130](https://github.com/tomriquier2004-dev/chatisen/issues/130)) ([727299e](https://github.com/tomriquier2004-dev/chatisen/commit/727299e88f1f1984e4dacb7ead651fd28ac13660))
+
 ## [0.4.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.3.0...v0.4.0) (2026-11-25)
 
 
