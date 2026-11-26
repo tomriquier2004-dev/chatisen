@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
+  AuthProviders,
   AuthResponse,
   LoginRequest,
   REFRESH_COOKIE,
@@ -12,7 +13,9 @@ import type { User } from "../../db/schema";
 import { dummyPasswordHash, hashPassword, verifyPassword } from "./passwords";
 import { RATE_RULES, rateLimit, type RateLimiter } from "../../plugins/rate-limit";
 import type { SessionEvents } from "./events";
-import { hashRefreshToken, newRefreshToken, type TokenService } from "./tokens";
+import { hashRefreshToken, newRefreshToken, type FlowStateSigner, type TokenService } from "./tokens";
+import type { MicrosoftClient } from "./microsoft";
+import { microsoftRoutes } from "./microsoft-routes";
 
 export interface AuthRoutesOptions {
   tokens: TokenService;
@@ -22,6 +25,8 @@ export interface AuthRoutesOptions {
   /** Prévenu après chaque révocation, pour fermer les sockets de ces sessions. */
   sessionEvents: SessionEvents;
   limits: { limiter: RateLimiter; enabled: boolean };
+  /** Connexion Microsoft (ADR-0020) ; absente si le déploiement ne la configure pas. */
+  microsoft?: { client: MicrosoftClient; flowSigner: FlowStateSigner } | undefined;
 }
 
 const PG_UNIQUE_VIOLATION = "23505";
@@ -79,6 +84,15 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions):
       expiresIn: tokens.accessTtlSeconds,
       user: toMe(user),
     };
+  }
+
+  app.get("/auth/providers", { schema: { response: { 200: AuthProviders } } }, async (): Promise<AuthProviders> => ({
+    password: true,
+    microsoft: opts.microsoft !== undefined,
+  }));
+
+  if (opts.microsoft) {
+    await app.register(microsoftRoutes, { ...opts.microsoft, secureCookies, limits: opts.limits, issueSession });
   }
 
   app.post(

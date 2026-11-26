@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { InputHTMLAttributes } from "preact";
 import { LoginRequest, RegisterRequest } from "@chatisen/shared";
 import { api } from "../../app/services";
@@ -6,6 +6,7 @@ import { ApiError } from "../../lib/errors";
 import { fieldErrors } from "../../lib/validation";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import styles from "./Auth.module.css";
+import { MICROSOFT_START_URL, takeMicrosoftError } from "./microsoft";
 
 type Mode = "login" | "register";
 
@@ -22,9 +23,19 @@ const FIELD_OF_CODE: Partial<Record<string, keyof typeof REGISTER_FIELDS>> = {
   EMAIL_TAKEN: "email",
 };
 
-/** Écrans de connexion et d'inscription (issue #78, FR-01, FR-02, FR-18). */
+/** Écrans de connexion et d'inscription (issue #78, FR-01, FR-02, FR-18) ; connexion Microsoft (ADR-0020). */
 export function AuthScreen() {
   const [mode, setMode] = useState<Mode>("login");
+  const [microsoft, setMicrosoft] = useState(false);
+  const [microsoftError] = useState(takeMicrosoftError);
+
+  useEffect(() => {
+    let active = true;
+    void api.providers().then((p) => active && setMicrosoft(p.microsoft));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <main class={styles.page}>
@@ -38,6 +49,16 @@ export function AuthScreen() {
             ChatISEN
           </h1>
         </div>
+        {microsoft ? (
+          <div class={styles.external}>
+            <a class={styles.secondary} href={MICROSOFT_START_URL}>
+              <MicrosoftLogo />
+              Continuer avec Microsoft
+            </a>
+            <p class={styles.separator}>ou</p>
+          </div>
+        ) : null}
+        <FormError message={microsoftError} />
         <div class={styles.tabs} role="tablist" aria-label="Choix du formulaire">
           {(["login", "register"] as const).map((m) => (
             <button
@@ -201,5 +222,17 @@ function FormError({ message }: { message: string | null }) {
     <p class={styles.formError} role="alert" aria-live="assertive">
       {message ?? ""}
     </p>
+  );
+}
+
+/** Logo à quatre carrés, aux couleurs officielles de Microsoft (décoratif : le texte du lien suffit). */
+function MicrosoftLogo() {
+  return (
+    <svg class={styles.providerLogo} viewBox="0 0 21 21" width="18" height="18" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
   );
 }

@@ -2,6 +2,7 @@ import type { TSchema, Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
   API_PREFIX,
+  AuthProviders,
   AuthResponse,
   ErrorResponse,
   type LoginRequest,
@@ -139,6 +140,15 @@ export class ApiClient {
     const session = this.fromAuth(await this.send("POST", "/auth/login", AuthResponse, body));
     this.setSession(session);
     return session;
+  }
+
+  /** Fournisseurs de connexion activés par le serveur (ADR-0020). En cas d'échec : mot de passe seul. */
+  async providers(): Promise<AuthProviders> {
+    try {
+      return await this.send("GET", "/auth/providers", AuthProviders);
+    } catch {
+      return { password: true, microsoft: false };
+    }
   }
 
   async logout(): Promise<void> {

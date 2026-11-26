@@ -132,3 +132,52 @@
   opacity: 0.6;
   cursor: progress;
 }
+
+/* Connexion Microsoft (ADR-0020) : bouton secondaire, contour --color-border-strong (design system). */
+.external {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font: var(--text-ui);
+  text-decoration: none;
+}
+
+.secondary:hover {
+  background: var(--color-bg-subtle);
+}
+
+.secondary:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 1px;
+}
+
+.providerLogo {
+  flex: none;
+}
+
+.separator {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.separator::before,
+.separator::after {
+  content: "";
+  flex: 1;
+  border-top: var(--border-subtle);
+}

@@ -169,3 +169,19 @@ describe("erreurs", () => {
     await expect(api.login({ username: "a", password: "b" })).rejects.toMatchObject({ code: "NETWORK_ERROR" });
   });
 });
+
+describe("fournisseurs de connexion", () => {
+  it("lit /auth/providers", async () => {
+    const { fetchFn } = fakeServer({ "GET /api/v1/auth/providers": () => json(200, { password: true, microsoft: true }) });
+    expect(await new ApiClient({ fetch: fetchFn }).providers()).toEqual({ password: true, microsoft: true });
+  });
+
+  it("se replie sur le mot de passe seul si le serveur ne répond pas ou répond mal", async () => {
+    const { fetchFn } = fakeServer({ "GET /api/v1/auth/providers": () => json(200, { microsoft: "oui" }) });
+    expect(await new ApiClient({ fetch: fetchFn }).providers()).toEqual({ password: true, microsoft: false });
+    const down: typeof fetch = async () => {
+      throw new TypeError("offline");
+    };
+    expect(await new ApiClient({ fetch: down }).providers()).toEqual({ password: true, microsoft: false });
+  });
+});
