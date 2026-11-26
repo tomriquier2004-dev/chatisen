@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig, secureCookies } from "./config";
+import { ConfigError, loadConfig, microsoftConfig, secureCookies } from "./config";
 
 describe("loadConfig", () => {
   it("applique les valeurs par défaut de développement", () => {
@@ -21,6 +21,7 @@ describe("loadConfig", () => {
       REDIS_URL: "redis://127.0.0.1:6379",
       RATE_LIMIT_ENABLED: true,
       TRUST_PROXY: false,
+      MICROSOFT_TENANT: "common",
       devDefaultsUsed: ["DATABASE_URL", "JWT_SECRET", "REDIS_URL"],
     });
   });
@@ -105,5 +106,45 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ DATABASE_URL: "mysql://user:s3cret@db/x" })).toThrow(
       expect.objectContaining({ message: expect.not.stringContaining("s3cret") }),
     );
+  });
+
+  describe("connexion Microsoft (ADR-0020)", () => {
+    const ms = {
+      MICROSOFT_CLIENT_ID: "11111111-2222-3333-4444-555555555555",
+      MICROSOFT_CLIENT_SECRET: "not-a-real-secret",
+      MICROSOFT_REDIRECT_URI: "https://chatisen.example/api/v1/auth/microsoft/callback",
+    };
+
+    it("est désactivée sans configuration", () => {
+      expect(microsoftConfig(loadConfig({}))).toBeNull();
+    });
+
+    it("est activée avec les trois variables, autorité common par défaut", () => {
+      expect(microsoftConfig(loadConfig(ms))).toEqual({
+        clientId: ms.MICROSOFT_CLIENT_ID,
+        clientSecret: ms.MICROSOFT_CLIENT_SECRET,
+        redirectUri: ms.MICROSOFT_REDIRECT_URI,
+        tenant: "common",
+      });
+    });
+
+    it("refuse une configuration partielle sans répéter le secret", () => {
+      const partial = { MICROSOFT_CLIENT_ID: ms.MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET: ms.MICROSOFT_CLIENT_SECRET };
+      expect(() => loadConfig(partial)).toThrow(/MICROSOFT_REDIRECT_URI/);
+      expect(() => loadConfig(partial)).toThrow(expect.objectContaining({ message: expect.not.stringContaining("not-a-real-secret") }));
+    });
+
+    it("refuse une URI de redirection qui ne pointe pas vers le callback", () => {
+      expect(() => loadConfig({ ...ms, MICROSOFT_REDIRECT_URI: "https://evil.example/" })).toThrow(ConfigError);
+    });
+
+    it("lit la liste de tenants autorisés", () => {
+      const tenants = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE,9188040d-6c67-4c5b-b112-36a304b66dad";
+      expect(microsoftConfig(loadConfig({ ...ms, MICROSOFT_ALLOWED_TENANTS: tenants }))?.allowedTenants).toEqual([
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "9188040d-6c67-4c5b-b112-36a304b66dad",
+      ]);
+      expect(() => loadConfig({ ...ms, MICROSOFT_ALLOWED_TENANTS: "isen.fr" })).toThrow(ConfigError);
+    });
   });
 });

@@ -39,6 +39,20 @@ const ConfigSchema = Type.Object({
   COOKIE_SECURE: Type.Optional(Type.Boolean()),
   ACCESS_TOKEN_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 3600, default: 900 }),
   REFRESH_TOKEN_TTL_DAYS: Type.Integer({ minimum: 1, maximum: 90, default: 30 }),
+  /**
+   * Connexion Microsoft Entra ID (ADR-0020). Les trois variables vont ensemble ; absentes, la
+   * connexion Microsoft est désactivée et seul le mot de passe reste disponible.
+   * Identifiant d'application (client) de l'App registration, pas un secret.
+   */
+  MICROSOFT_CLIENT_ID: Type.Optional(Type.String({ minLength: 1 })),
+  /** Secret client de l'App registration : Secret Manager en déploiement, jamais dans le dépôt. */
+  MICROSOFT_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
+  /** URI de redirection déclarée dans l'App registration, …/api/v1/auth/microsoft/callback. */
+  MICROSOFT_REDIRECT_URI: Type.Optional(Type.String({ pattern: "^https?://[^\\s]+/api/v1/auth/microsoft/callback$" })),
+  /** Autorité : `common` (comptes personnels et professionnels/scolaires), `organizations`, `consumers` ou un tenant. */
+  MICROSOFT_TENANT: Type.String({ minLength: 1, pattern: "^[A-Za-z0-9.-]+$", default: "common" }),
+  /** Liste d'identifiants de tenant acceptés, séparés par des virgules. Absente : tous les tenants. */
+  MICROSOFT_ALLOWED_TENANTS: Type.Optional(Type.String({ pattern: "^[0-9a-fA-F-]{36}(,[0-9a-fA-F-]{36})*$" })),
   /** Secret coturn REST (use-auth-secret), jamais exposé au client. */
   TURN_SHARED_SECRET: Type.Optional(Type.String({ minLength: 32 })),
   /** URLs STUN/TURN séparées par des virgules, sans identifiants. */
@@ -64,6 +78,22 @@ export function secureCookies(config: Pick<Config, "COOKIE_SECURE" | "NODE_ENV" 
   if (config.COOKIE_SECURE !== undefined) return config.COOKIE_SECURE;
   const devLike = config.NODE_ENV === "development" || config.NODE_ENV === "test";
   return !(devLike && LOCAL_HOSTS.has(config.API_HOST));
+}
+
+/** Réglages de la connexion Microsoft, ou null si elle n'est pas configurée (ADR-0020). */
+export function microsoftConfig(config: Config): MicrosoftConfig | null {
+  const { MICROSOFT_CLIENT_ID: clientId, MICROSOFT_CLIENT_SECRET: clientSecret, MICROSOFT_REDIRECT_URI: redirectUri } = config;
+  if (!clientId || !clientSecret || !redirectUri) return null;
+  const allowedTenants = config.MICROSOFT_ALLOWED_TENANTS?.split(",").map((t) => t.toLowerCase());
+  return { clientId, clientSecret, redirectUri, tenant: config.MICROSOFT_TENANT, ...(allowedTenants ? { allowedTenants } : {}) };
+}
+
+export interface MicrosoftConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  tenant: string;
+  allowedTenants?: string[];
 }
 
 export class ConfigError extends Error {
@@ -113,6 +143,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       `Configuration invalide : API_HOST=${converted.API_HOST} n'est pas une adresse locale, ` +
         `${risky.join(" et ")} doivent être fournis explicitement (NODE_ENV=production recommandé)`,
     );
+  }
+  const microsoft = ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_REDIRECT_URI"] as const;
+  const missing = microsoft.filter((k) => converted[k] === undefined);
+  if (missing.length > 0 && missing.length < microsoft.length) {
+    throw new ConfigError(`Configuration invalide : connexion Microsoft incomplète, il manque ${missing.join(", ")}`);
   }
   if (!LOCAL_HOSTS.has(converted.API_HOST)) {
     const turnSecret = converted.TURN_SHARED_SECRET?.toLowerCase();
