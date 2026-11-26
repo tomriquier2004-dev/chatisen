@@ -52,7 +52,7 @@ C. **La VM tire elle-même les nouvelles images** — évite d'ouvrir un accès 
 ## À vérifier avant de passer à « accepté »
 
 - [x] Le workflow `Images` est vert sur une pull request (build et Trivy des trois images).
-- [ ] Les images sont publiées sur `main` et leur visibilité est publique.
+- [x] Les images sont publiées sur `main` et leur visibilité est publique (vérifié le 2026-11-26 : le manifeste `main` des trois images répond 200 sans authentification).
 - [ ] Déploiement sur la VM : `pull`, `up -d`, services « healthy », HTTPS avec certificat valide.
 - [ ] Inscription, connexion et envoi d'un message sur le nom de domaine, en HTTPS.
 - [ ] Sauvegarde chiffrée produite sur la VM (clé publique age fournie).
