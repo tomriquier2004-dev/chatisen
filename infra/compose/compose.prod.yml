@@ -11,7 +11,7 @@ name: chatisen
 
 services:
   caddy:
-    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/web:${IMAGE_TAG:-main}
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/web:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
     restart: unless-stopped
     ports:
       - "80:80"
@@ -39,7 +39,7 @@ services:
     security_opt: ["no-new-privileges:true"]
 
   api:
-    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/api:${IMAGE_TAG:-main}
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/api:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -105,7 +105,7 @@ services:
 
   # Même service que infra/backup/compose.yml (issue #9) : pg_dump chiffré avec la clé PUBLIQUE age.
   postgres-backup:
-    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/postgres-backup:${IMAGE_TAG:-main}
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/postgres-backup:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
     restart: unless-stopped
     depends_on:
       postgres:

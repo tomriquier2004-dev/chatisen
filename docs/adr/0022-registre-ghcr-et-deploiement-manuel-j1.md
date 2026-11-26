@@ -1,4 +1,4 @@
-# ADR-0022 : Registre GHCR, images tagguées par SHA, scan Trivy bloquant et déploiement manuel en J1
+# ADR-0022 : Registre GHCR, images taguées par SHA, scan Trivy bloquant et déploiement manuel en J1
 
 - **Statut** : proposé
 - **Date** : 2026-11-25
@@ -32,7 +32,7 @@ C. **La VM tire elle-même les nouvelles images** — évite d'ouvrir un accès 
 ## Décision
 
 1. **GHCR** (option 1), images `ghcr.io/<propriétaire>/chatisen/{api,web,postgres-backup}`. Elles sont **publiques** : elles ne contiennent aucun secret (ceux-ci viennent du `.env` de la VM). Le réglage de visibilité est fait une fois par le propriétaire du dépôt.
-2. **Tags** : `sha-<12 premiers caractères du commit>` (déploiement reproductible, retour arrière par l'ancien tag) et `main` (dernier build, mobile, à ne pas utiliser en production).
+2. **Tags** : `sha-<12 premiers caractères du commit>` (déploiement reproductible) et `main` (dernier build, mobile). `IMAGE_TAG` est **obligatoire** dans le Compose, sans valeur par défaut, pour ne pas déployer un tag mobile sans le savoir.
 3. **Scan Trivy bloquant** sur CRITICAL et HIGH avec `--ignore-unfixed`, proposition de Tom en attendant l'ADR-0015. L'image publiée est **celle qui a été scannée** (construite une fois, scannée, puis poussée). Les exceptions sont dans `.trivyignore`, avec justification et date de revue.
 4. **Images de base épinglées par condensat**, mises à jour par Dependabot (`docker` et `docker-compose`).
 5. **Durcissement** : l'image de l'API n'embarque ni npm ni pnpm (leurs dépendances faisaient échouer le scan sans servir) et s'exécute en utilisateur `node` ; l'image de sauvegarde n'embarque plus `gosu` ; les conteneurs de l'API s'exécutent en lecture seule, sans capacité Linux, avec `no-new-privileges`.
@@ -40,17 +40,18 @@ C. **La VM tire elle-même les nouvelles images** — évite d'ouvrir un accès 
 
 ## Conséquences
 
-- **Étape humaine au déploiement** : risque d'oubli ou d'erreur de tag. Atténué par des commandes documentées, des contrôles de santé et le retour arrière par tag.
+- **Étape humaine au déploiement** : risque d'oubli ou d'erreur de tag. Atténué par des commandes documentées, des contrôles de santé et le retour arrière. Celui-ci n'est reproductible que si l'on déploie le **même commit** pour la configuration (`Caddyfile`, `compose.prod.yml`) que pour les images : `git checkout <sha>` puis `IMAGE_TAG` correspondant (runbook).
 - **Images publiques** : n'importe qui peut les télécharger. Rien de sensible n'y entre (`.dockerignore`, secrets à l'exécution), mais il faut le garder vrai à chaque modification des Dockerfiles.
 - **Dépendance à GHCR** : en cas d'indisponibilité, `compose.build.yml` construit les images sur la VM (secours, sans preuve que l'image est celle qui a été scannée).
 - **Exception Trivy** : CVE-2026-78661 (`golang.org/x/net` dans le binaire de Caddy 2.11.9, déni de service par HTML forgé). Aucun Caddy corrigé n'existe au 2026-11-25 et notre configuration n'interprète pas de HTML fourni par un client. **À revoir le 2026-12-02.**
-- **Mesures faites en local, pas encore en CI** : les trois images se construisent et passent Trivy (image officielle, dernière base) sans faille bloquante ; la pile démarre et répond en HTTP. Le workflow n'a pas encore tourné sur GitHub.
+- **Mesures** : les trois images se construisent et passent Trivy sans faille bloquante, en local puis dans le workflow `Images` sur la pull request. La pile démarre et répond en HTTP en local ; la publication sur `main` et le déploiement HTTPS ne sont pas encore vérifiés.
+- **PostgreSQL sur la VM est provisoire (J1)** : le Compose de déploiement garde un conteneur PostgreSQL et la sauvegarde `pg_dump`. La cible est Cloud SQL ([ADR-0017](0017-base-de-donnees-cloud-sql.md)), qui les remplacera ; cet ADR ne décide pas ce changement.
 - **Images `amd64` seulement**, comme l'hôte. À rouvrir si l'hôte change d'architecture.
 - **À revoir** quand le déploiement automatique (F09) sera tranché, si GHCR pose problème, ou si Terraform ([ADR-0018](0018-terraform-et-load-balancer-gcp.md)) prend en charge le déploiement.
 
 ## À vérifier avant de passer à « accepté »
 
-- [ ] Le workflow `Images` est vert sur une pull request (build et Trivy des trois images).
+- [x] Le workflow `Images` est vert sur une pull request (build et Trivy des trois images).
 - [ ] Les images sont publiées sur `main` et leur visibilité est publique.
 - [ ] Déploiement sur la VM : `pull`, `up -d`, services « healthy », HTTPS avec certificat valide.
 - [ ] Inscription, connexion et envoi d'un message sur le nom de domaine, en HTTPS.

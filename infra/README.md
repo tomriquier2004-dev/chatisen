@@ -233,12 +233,12 @@ curl.exe -i https://dc-ops.isen.fedyna.fr/api/v1/health/ready
 
 Ouvrir ensuite `https://dc-ops.isen.fedyna.fr` : le cadenas doit être présent (le client exige un contexte sécurisé, issue #12), créer un compte et envoyer un message.
 
-4. **Mettre à jour** : changer `IMAGE_TAG`, refaire `pull` puis `up -d`. **Retour arrière** : remettre l'ancien `IMAGE_TAG`. Journaux : `sudo docker compose -f compose.prod.yml logs -f api caddy`.
+4. **Mettre à jour** : `git checkout <sha>` du commit dont on déploie les images (le `Caddyfile` et `compose.prod.yml` viennent du clone, pas de l'image), régler `IMAGE_TAG` sur `sha-<12 premiers caractères de ce commit>`, puis `pull` et `up -d`. **Retour arrière** : refaire les deux avec l'ancien commit ; changer seulement `IMAGE_TAG` ne ramène pas la configuration. Journaux : `sudo docker compose -f compose.prod.yml logs -f api caddy`.
 
-5. **Secours si GHCR est indisponible** : construire sur la VM avec l'override de build.
+5. **Secours si GHCR est indisponible** : construire sur la VM avec l'override de build (`IMAGE_TAG` reste obligatoire pour le Compose : n'importe quelle valeur, par exemple `local`).
 
 ```bash
-sudo docker compose -f compose.prod.yml -f compose.build.yml up -d --build
+sudo IMAGE_TAG=local docker compose -f compose.prod.yml -f compose.build.yml up -d --build
 ```
 
 ## Accéder à Grafana (quand il sera déployé)

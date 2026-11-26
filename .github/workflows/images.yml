@@ -29,8 +29,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: images-${{ github.ref }}
-  # Un build de main n'est jamais annulé : chaque commit de main doit avoir ses images.
+  # Un push sur main a son propre groupe (par SHA) : GitHub ne remplace donc jamais une exécution en attente
+  # par la suivante, et chaque commit de main a ses images. Les PR sont annulées par un nouveau push.
+  group: images-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -56,6 +57,8 @@ jobs:
             context: infra/backup
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Construire l'image
         env:
