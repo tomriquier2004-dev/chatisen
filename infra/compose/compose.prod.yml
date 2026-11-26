@@ -1,0 +1,129 @@
+# Déploiement sur la VM (issue #12, ADR-0012, ADR-0016, ADR-0022) : Caddy, API, PostgreSQL, Redis, sauvegardes.
+# Seul Caddy publie des ports (80, 443/tcp). PostgreSQL, Redis et l'API restent sur le réseau Docker interne.
+# coturn et la supervision ont leur propre Compose (infra/coturn, infra/observability).
+#
+# Sur la VM, depuis ce dossier, après avoir créé .env (voir .env.example) :
+#   sudo docker compose -f compose.prod.yml pull
+#   sudo docker compose -f compose.prod.yml up -d
+# Sans registre disponible (secours) : construire sur place avec l'override de build :
+#   sudo docker compose -f compose.prod.yml -f compose.build.yml up -d --build
+name: chatisen
+
+services:
+  caddy:
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/web:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Nom d'hôte du site : Caddy obtient lui-même le certificat. Le DNS doit déjà pointer vers la VM.
+      # « :80 » = HTTP seul, pour un essai local sans certificat.
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS requis (voir .env.example)}
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Les certificats obtenus restent dans ce volume : Let's Encrypt limite les émissions par nom.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+
+  api:
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/api:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Le mot de passe est dans une URL : il doit être sans caractère spécial (openssl rand -hex 24).
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatisen}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}@postgres:5432/${POSTGRES_DB:-chatisen}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis (32 caractères minimum)}
+      # Derrière Caddy : l'adresse du client est lue dans X-Forwarded-For (limitation de débit par client).
+      TRUST_PROXY: "true"
+      # Cookie de refresh Secure : le client est servi en HTTPS (contexte sécurisé, issue #12).
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /health/ready vérifie PostgreSQL et Redis. Node 22 fournit fetch : pas d'outil de plus dans l'image.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  postgres:
+    image: postgres:16-bookworm@sha256:cd0e9518bda5f2ea667ff84d22795d089720c883f288e215d97ce57437e8ef37
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatisen}
+      POSTGRES_USER: ${POSTGRES_USER:-chatisen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt: ["no-new-privileges:true"]
+
+  redis:
+    image: redis:7-bookworm@sha256:6b645a37f49b0546582468706b32e71a8b7fbb5ba4583d0f9e27a8004716b738
+    restart: unless-stopped
+    # Rien de durable dans Redis (ADR-0006) : ni snapshot ni journal.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    security_opt: ["no-new-privileges:true"]
+
+  # Même service que infra/backup/compose.yml (issue #9) : pg_dump chiffré avec la clé PUBLIQUE age.
+  postgres-backup:
+    image: ${IMAGE_REGISTRY:-ghcr.io/tomriquier2004-dev/chatisen}/postgres-backup:${IMAGE_TAG:?IMAGE_TAG requis, sha-<12 premiers caractères du commit déployé>}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-chatisen}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis}
+      PGDATABASE: ${POSTGRES_DB:-chatisen}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?BACKUP_AGE_RECIPIENT requis (clé publique age)}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      # Volume distinct de pg-data : perdre le volume de la base ne fait pas perdre les sauvegardes.
+      - pg-backups:/backups
+
+volumes:
+  pg-data:
+  pg-backups:
+  caddy-data:
+  caddy-config:
