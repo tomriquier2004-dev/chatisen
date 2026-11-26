@@ -552,7 +552,7 @@ flowchart LR
         IP["IP statique chatisen-ip"]
         LB["Load balancer réseau (retenu)<br/>passthrough TCP/UDP<br/>web 80, 443 · TURN 3478, 49152-49252"]
         IAP["IAP 35.235.240.0/20<br/>SSH et déploiement"]
-        NAT["Cloud NAT ou IP externes<br/>sortie des VM (F18, à trancher)"]
+        NAT["Cloud NAT<br/>sortie des VM (F18)"]
         FW["Pare-feu VPC<br/>chatisen-web, chatisen-turn, chatisen-ssh-iap<br/>default-allow-ssh supprimée"]
         subgraph VW["VM web"]
             SSHD["sshd :22<br/>OS Login"]
@@ -623,7 +623,7 @@ Ces consignes du prof sont consignées dans [`prof-qa.md`](prof-qa.md) (25 novem
 - **Ils courent aussi VM éteintes** : la règle de transfert est facturée tant qu'elle existe, comme l'IP de la passerelle NAT. La règle « éteinte, la VM ne coûte que son disque et son IP » de [`infra/README.md`](../infra/README.md) ne vaudra plus une fois le load balancer créé.
 - **Quel type** : le tarif de la règle de transfert est le même pour les load balancers réseau (passthrough et proxy) et d'application externes ; le choix est donc technique. Seul le load balancer réseau **passthrough externe** transmet à la fois le TCP (web) et l'UDP (TURN) sur une même IP ; un load balancer d'application ne traite que le HTTP(S) et un load balancer réseau proxy que le TCP (connaissance générale de GCP, pas lue sur la page de tarifs : à confirmer dans la documentation). Les load balancers internes sont à écarter : le load balancer d'application interne facture au minimum trois instances de proxy à 0,025 $/h chacune, même sans trafic.
 - **Hypothèse à mesurer avant de s'y engager** : coturn derrière un load balancer passthrough. Les paquets relayés que coturn envoie à l'autre pair doivent porter l'adresse du load balancer comme source ; avec Cloud NAT, ils porteraient celle de la passerelle et pourraient être ignorés par le pair. À vérifier avec un appel relayé.
-- **Recommandation pour F18** : des IP externes sur les VM plutôt que Cloud NAT (coût comparable, une pièce de moins, pas de question d'adresse source pour coturn). Les règles de pare-feu continuent de limiter les entrées.
+- **Choix pour F18** : Cloud NAT, retenu sur le schéma de la vue cible validé le 2026-11-26. Cela écarte la recommandation précédente (IP externes sur les VM : coût comparable, une pièce de moins, pas de question d'adresse source pour coturn). Le risque ci-dessus reste donc à lever par un appel relayé ; s'il échoue, **repli : IP externe sur la VM TURN seule**. Les règles de pare-feu continuent de limiter les entrées.
 - **Alternative sans load balancer**, à garder si le test coturn échoue : une IP statique propre à la VM TURN et un nom `turn.dc-ops.isen.fedyna.fr` (sous-domaine à demander au prof).
 
 #### Frontières de confiance
@@ -665,7 +665,7 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F15 | les deux | Admin (tunnel SSH) | Grafana, `127.0.0.1:3000` de la VM | 3000/tcp local | HTTP dans SSH | SSH | proposé | `gcloud compute ssh … -- -L 3000:localhost:3000` | ADR-0016 § 4, `infra/README.md` |
 | F16 | cible | Prometheus (VM web) | coturn (VM TURN), métriques | 9641/tcp | HTTP, VPC interne | aucun | proposé | cible « UP » dans Prometheus | `default-allow-internal` |
 | F17 | les deux | API | coturn | — | aucun flux : secret HMAC partagé | — | proposé | identifiants refusés après expiration | architecture § 6.4 |
-| F18 | cible | VM web et VM TURN | Internet (registre, ACME) | 443/tcp sortant | HTTPS | TLS | à trancher (Cloud NAT ou IP externe des VM) ; IP externes recommandées, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
+| F18 | cible | VM web et VM TURN | Internet (registre, ACME) | 443/tcp sortant | HTTPS | TLS | **Cloud NAT** (schéma cible validé le 2026-11-26) ; hypothèse coturn derrière Cloud NAT à mesurer, repli : IP externe sur la VM TURN, voir « Load balancer retenu » | `curl https://…` depuis la VM | — |
 | F19 | les deux | CI (GitHub Actions) | Registre d'images | 443/tcp | HTTPS (push d'images API et client) | TLS | à trancher : registre non choisi | image taguée par SHA dans le registre | ADR-0012, #12, `ci.yml` (commentaire « push registry ») |
 | F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
 | F21 | cible (manquant en J1) | postgres-backup (recommandé) ou export Cloud SQL | bucket Cloud Storage du projet | 443/tcp | HTTPS (API Google) | TLS + fichier chiffré age (si `postgres-backup`) | **manquant** | restauration depuis le bucket | #42, [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) |
