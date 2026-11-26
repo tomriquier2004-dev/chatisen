@@ -821,4 +821,5 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0016](adr/0016-point-d-entree-caddy-et-ports-turn.md) | Point d'entrée Caddy, un seul nom d'hôte, ports de coturn | proposé, rédigé |
 | ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
 | [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
+| [ADR-0019](adr/0019-coturn-vm-dediee.md) | Isolation de coturn sur une VM dédiée (vue cible) | proposé, à valider |
 | [ADR-0020](adr/0020-connexion-microsoft-entra-id.md) | Connexion avec un compte Microsoft (Entra ID, OIDC) | proposé, rédigé |

@@ -14,8 +14,8 @@ export function newUser(prefix: string): TestUser {
 }
 
 /** Ouvre un navigateur isolé (cookies et stockage propres), comme une seconde personne. */
-export async function openBrowser(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
+export async function openBrowser(browser: Browser, permissions: string[] = []): Promise<Page> {
+  const context = await browser.newContext({ permissions: permissions as ("microphone" | "camera")[] });
   return context.newPage();
 }
 
@@ -44,8 +44,10 @@ export async function logout(page: Page): Promise<void> {
 }
 
 async function pickUser(page: Page, user: TestUser): Promise<void> {
-  await page.getByPlaceholder("Nom ou nom d'utilisateur (2 caractères min.)").fill(user.username);
-  await page.getByRole("button").filter({ hasText: user.displayName }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByPlaceholder("Nom ou nom d'utilisateur (2 caractères min.)").fill(user.username);
+  // La sidebar peut déjà contenir un bouton portant le même nom : scope le résultat à la modale.
+  await dialog.getByRole("button").filter({ hasText: user.displayName }).click();
 }
 
 export async function createPrivate(page: Page, other: TestUser): Promise<void> {
@@ -106,8 +108,9 @@ export async function cuttableRealtime(page: Page) {
       blocked = true;
       await Promise.all(open.splice(0).map((c) => c.close().catch(() => undefined)));
     },
-    restore() {
+    async restore() {
       blocked = false;
+      await page.unrouteAll({ behavior: "wait" });
     },
   };
 }

@@ -53,6 +53,13 @@ const ConfigSchema = Type.Object({
   MICROSOFT_TENANT: Type.String({ minLength: 1, pattern: "^[A-Za-z0-9.-]+$", default: "common" }),
   /** Liste d'identifiants de tenant acceptés, séparés par des virgules. Absente : tous les tenants. */
   MICROSOFT_ALLOWED_TENANTS: Type.Optional(Type.String({ pattern: "^[0-9a-fA-F-]{36}(,[0-9a-fA-F-]{36})*$" })),
+  /** Secret coturn REST (use-auth-secret), jamais exposé au client. */
+  TURN_SHARED_SECRET: Type.Optional(Type.String({ minLength: 32 })),
+  /** URLs STUN/TURN séparées par des virgules, sans identifiants. */
+  TURN_URLS: Type.Optional(Type.String({ minLength: 1, maxLength: 16_384 })),
+  TURN_CREDENTIAL_TTL_SECONDS: Type.Integer({ minimum: 60, maximum: 86_400, default: 3_600 }),
+  CALL_RING_TIMEOUT_SECONDS: Type.Integer({ minimum: 5, maximum: 120, default: 30 }),
+  CALL_DISCONNECT_GRACE_SECONDS: Type.Integer({ minimum: 3, maximum: 60, default: 10 }),
 });
 
 export type Config = Static<typeof ConfigSchema> & {
@@ -141,6 +148,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const missing = microsoft.filter((k) => converted[k] === undefined);
   if (missing.length > 0 && missing.length < microsoft.length) {
     throw new ConfigError(`Configuration invalide : connexion Microsoft incomplète, il manque ${missing.join(", ")}`);
+  }
+  if (!LOCAL_HOSTS.has(converted.API_HOST)) {
+    const turnSecret = converted.TURN_SHARED_SECRET?.toLowerCase();
+    const weakTurnSecret = !turnSecret || ["change-me", "changeme", "development", "dev-secret", "test-secret"].some((v) => turnSecret.includes(v));
+    const missingTurn = [weakTurnSecret ? "TURN_SHARED_SECRET" : "", !converted.TURN_URLS ? "TURN_URLS" : ""].filter(Boolean);
+    if (missingTurn.length > 0) {
+      throw new ConfigError(`Configuration invalide : ${missingTurn.join(" et ")} doivent être fournis explicitement sur un hôte exposé`);
+    }
   }
   return { ...converted, devDefaultsUsed };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { MessageBody, MessageHistory, type ConversationView } from "@chatisen/shared";
+import { MessageBody, MessageHistory, type CallMedia, type ConversationView } from "@chatisen/shared";
 import { Value } from "@sinclair/typebox/value";
 import { api, realtime } from "../../app/services";
 import { ApiError } from "../../lib/errors";
@@ -17,13 +17,14 @@ export interface ChatViewProps {
   onRead?: (seq: number) => void;
   /** Ouvre la gestion des membres (groupes seulement). */
   onShowMembers?: (() => void) | undefined;
+  onStartCall?: (media: CallMedia) => void;
 }
 
 /**
  * Vue de chat (issue #80) : historique paginé, envoi optimiste confirmé par le `seq` serveur,
  * réception en direct, rattrapage après coupure (géré par `Realtime`), erreurs lisibles (FR-18).
  */
-export function ChatView({ conversation, meId, title, onRead, onShowMembers }: ChatViewProps) {
+export function ChatView({ conversation, meId, title, onRead, onShowMembers, onStartCall }: ChatViewProps) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasOlder, setHasOlder] = useState(false);
@@ -157,6 +158,16 @@ export function ChatView({ conversation, meId, title, onRead, onShowMembers }: C
             ? `${conversation.members.length} membre${conversation.members.length > 1 ? "s" : ""}`
             : "Conversation privée"}
         </span>
+        {conversation.type === "private" && onStartCall && (
+          <div class={styles.callActions} aria-label="Actions d'appel">
+            <button type="button" class={styles.secondary} onClick={() => onStartCall("audio")}>
+              Appel vocal
+            </button>
+            <button type="button" class={styles.secondary} onClick={() => onStartCall("video")}>
+              Appel vidéo
+            </button>
+          </div>
+        )}
         {onShowMembers && (
           <button type="button" class={`${styles.secondary} ${styles.headerAction}`} onClick={onShowMembers}>
             Membres

@@ -29,3 +29,7 @@ secrets/
 # Playwright
 playwright-report/
 test-results/
+
+# Local TURN secret and environment-specific remote scrape target
+infra/coturn/.turn_shared_secret
+infra/observability/targets/coturn.yml

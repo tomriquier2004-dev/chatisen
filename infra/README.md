@@ -90,8 +90,9 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
 | 3389 | TCP | _supprimée le 25/11/2026_ | RDP | fermé |
+| 9641 | TCP | `chatisen-turn-metrics` (à créer pour la vue cible) | Prometheus → coturn `/metrics` | VPC privé, source limitée à la VM web ; J1 reste sur le réseau Docker |
 
-Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki. Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
+Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki et les métriques coturn (9641, privées uniquement). Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
 
 ## Restreindre le SSH avec IAP (à faire, VM allumée pour tester)
 
@@ -225,5 +226,72 @@ puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à 
 | `caddy/` | `Caddyfile` (production) et `Caddyfile.ports-test` (test sans application) |
 | `compose/` | `compose.dev.yml` (données de développement) et `compose.ports-test.yml` (test du point d'entrée) |
 | `github/` | Rulesets du dépôt décrits en code |
+| `coturn/` | Configuration et Compose du relais TURN dédié |
+| `observability/` | Prometheus, Grafana, dashboard et règles d'alerte |
 
-Pas encore là (issue #12) : Dockerfiles de l'API et du client, Compose de déploiement, coturn, Prometheus et Grafana, workflow de déploiement.
+Restent à finaliser : workflow de déploiement applicatif, provisionnement de la VM coturn après validation humaine, et test opérationnel des alertes sur l'infrastructure cible.
+
+## Coturn sur une VM dédiée
+
+Le relais média est isolé de la VM Caddy/API conformément à la proposition [ADR-0019](../docs/adr/0019-coturn-vm-dediee.md). Le fournisseur, le coût et l'autorisation de créer cette VM restent à confirmer par l'encadrant et Sha ; ne pas créer de ressource cloud avant leur validation.
+
+La configuration reproductible, le fichier de paramètres et les étapes de test sont dans [`infra/coturn/`](coturn/README.md). Elle épingle `coturn/coturn:4.6.2`, utilise le secret TURN REST hors dépôt, UDP/TCP 3478 et UDP 49152-49252. En J1 (une VM), Prometheus joint coturn par l'alias Docker `coturn:9641` ; le port publié sur l'hôte reste lié à `127.0.0.1`. Dans la vue cible (VM TURN séparée), `TURN_METRICS_BIND_IP` doit être l'IP privée de la VM TURN : le port `9641/tcp` est joignable depuis la VM web uniquement, via le VPC. Il ne doit jamais être publié sur une IP publique.
+
+## Prometheus et Grafana
+
+La stack de supervision est versionnée dans [`infra/observability/`](observability/compose.yml). Elle comprend Prometheus, Grafana provisionné, le tableau de bord `ChatISEN — appels et TURN` et les alertes `CoturnUnavailable` et `CallNegotiationFailureRateHigh`.
+
+Préparer le réseau privé et la stack :
+
+```bash
+sudo docker network create chatisen-observability
+cd infra/observability
+cp .env.example .env
+cp targets/coturn.yml.example targets/coturn.yml  # J1: coturn:9641 ; J2: remplacer par <IP_PRIVEE_VM_TURN>:9641
+openssl rand -base64 36  # mot de passe Grafana
+chmod 600 .env
+# Renseigner GRAFANA_ADMIN_PASSWORD dans .env
+sudo docker compose --env-file .env -f compose.yml up -d
+```
+
+Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
+
+Accès opérateur par tunnel SSH, sans ouvrir de port public :
+
+```bash
+ssh -L 9090:127.0.0.1:9090 -L 3000:127.0.0.1:3000 <utilisateur>@<vm>
+```
+
+Puis ouvrir Prometheus sur `http://127.0.0.1:9090` et Grafana sur `http://127.0.0.1:3000`.
+
+### Test de l'alerte coturn
+
+Après déploiement et validation de la cible `coturn` dans Prometheus, arrêter temporairement le conteneur TURN pendant plus d'une minute dans une fenêtre de test :
+
+```bash
+sudo docker stop chatisen-coturn
+# Vérifier l'état firing de CoturnUnavailable dans Prometheus / Grafana.
+sudo docker start chatisen-coturn
+```
+
+Le test doit être réalisé en dehors d'un appel réel. Consigner la date, le temps de détection et le retour à l'état normal dans `docs/reports/`. Il n'a pas été exécuté depuis cette session : aucune VM TURN dédiée ni aucun destinataire d'alerte opérationnel n'est encore configuré.
+
+
+### Runbook court : coturn indisponible
+
+1. Vérifier l'alerte `CoturnUnavailable` et l'état de la cible dans Prometheus (`Status → Targets`).
+2. Sur la VM TURN, vérifier le conteneur et les journaux :
+   ```bash
+   sudo docker inspect --format '{{.State.Health.Status}}' chatisen-coturn
+   sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml logs --tail=200 coturn
+   sudo ss -lunpt | grep -E ':(3478|491[5-9][0-9]|492[0-5][0-9]|49252)\b'
+   ```
+3. Vérifier l'IP publique statique, les règles firewall UDP/TCP 3478 et UDP 49152-49252, puis l'adresse privée configurée dans `TURN_INTERNAL_IP`.
+4. Si le processus est bloqué, recréer le service :
+   ```bash
+   sudo docker compose --project-directory infra/coturn --env-file infra/coturn/.env -f infra/coturn/compose.yml up -d --force-recreate coturn
+   curl --fail http://<IP_PRIVEE_VM_TURN>:9641/metrics
+   ```
+5. Valider un nouvel appel depuis deux réseaux distincts et vérifier `candidateType=relay` dans `getStats()`. Ne pas basculer TURN sur 443 : ce port reste réservé à Caddy.
+
+Les appels P2P déjà établis peuvent continuer pendant une panne TURN ; les nouveaux appels derrière des NAT restrictifs risquent d'échouer. Si la VM ou son IP est perdue, restaurer l'IP statique avant de modifier `TURN_URLS` côté API.

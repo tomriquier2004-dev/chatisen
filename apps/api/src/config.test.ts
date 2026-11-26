@@ -9,6 +9,9 @@ describe("loadConfig", () => {
       JWT_SECRET: config.JWT_SECRET,
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_DAYS: 30,
+      TURN_CREDENTIAL_TTL_SECONDS: 3600,
+      CALL_RING_TIMEOUT_SECONDS: 30,
+      CALL_DISCONNECT_GRACE_SECONDS: 10,
       NODE_ENV: "development",
       API_HOST: "127.0.0.1",
       API_PORT: 3000,
@@ -49,6 +52,8 @@ describe("loadConfig", () => {
     const explicit = {
       JWT_SECRET: "x".repeat(48),
       DATABASE_URL: "postgres://chatisen:secret@db:5432/chatisen",
+      TURN_SHARED_SECRET: "turn-secret-".repeat(4),
+      TURN_URLS: "turn:turn.example.test:3478?transport=udp",
     };
 
     it("refuse de démarrer sur une adresse non locale avec la clé JWT ou la base de développement", () => {
@@ -61,6 +66,11 @@ describe("loadConfig", () => {
       expect(loadConfig({ API_HOST: "0.0.0.0", ...explicit }).API_HOST).toBe("0.0.0.0");
     });
 
+    it("refuse un secret TURN absent ou de développement sur un hôte exposé", () => {
+      expect(() => loadConfig({ API_HOST: "0.0.0.0", ...explicit, TURN_SHARED_SECRET: undefined })).toThrow(/TURN_SHARED_SECRET/);
+      expect(() => loadConfig({ API_HOST: "0.0.0.0", ...explicit, TURN_SHARED_SECRET: "development".repeat(3) })).toThrow(/TURN_SHARED_SECRET/);
+    });
+
     it("garde les valeurs de développement sur une adresse locale", () => {
       for (const host of ["127.0.0.1", "localhost", "::1"]) {
         expect(loadConfig({ API_HOST: host }).devDefaultsUsed).toContain("JWT_SECRET");
@@ -69,7 +79,12 @@ describe("loadConfig", () => {
   });
 
   describe("cookie Secure", () => {
-    const explicit = { JWT_SECRET: "x".repeat(48), DATABASE_URL: "postgres://u:p@db/x" };
+    const explicit = {
+      JWT_SECRET: "x".repeat(48),
+      DATABASE_URL: "postgres://u:p@db/x",
+      TURN_SHARED_SECRET: "turn-secret-".repeat(4),
+      TURN_URLS: "turn:turn.example.test:3478",
+    };
 
     it("est désactivé seulement en development ou test sur une adresse locale", () => {
       expect(secureCookies(loadConfig({}))).toBe(false);

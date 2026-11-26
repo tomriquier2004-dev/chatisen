@@ -17,6 +17,10 @@ export const ERROR_CODES = [
   "ALREADY_MEMBER",
   "NOT_A_GROUP",
   "RATE_LIMITED",
+  "CALL_NOT_FOUND",
+  "CALL_NOT_ACTIVE",
+  "CALL_BUSY",
+  "CALL_ALREADY_ENDED",
   "INTERNAL_ERROR",
 ] as const;
 

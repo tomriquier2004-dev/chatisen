@@ -8,11 +8,11 @@
 
 Comparer les mesures WebRTC (RTT, jitter, perte de paquets, débit et type de candidat ICE) sous plusieurs conditions réseau, puis évaluer un détecteur simple d'anomalies. L'analyse doit distinguer les connexions directes (host / srflx) des connexions relayées (relay).
 
-**Aucun résultat expérimental n'est présenté dans cette version.** Le dépôt ne contient pas encore de client WebRTC qui établit les appels ni de jeu de données collecté avec tc netem. Produire des chiffres maintenant reviendrait à inventer des mesures.
+**Aucun résultat expérimental n'est présenté dans cette version.** Le client WebRTC, la signalisation et la collecte getStats() vers `call_quality_samples` sont désormais implémentés et testés unitairement. En revanche, aucune campagne `tc netem` n'a été exécutée et aucun jeu de données labellisé n'est encore disponible. Produire des chiffres maintenant reviendrait à inventer des mesures.
 
 ## Protocole de collecte à exécuter
 
-1. Préparer deux clients de test et établir un appel audio puis vidéo 1-1 lorsque la signalisation et le client WebRTC seront disponibles.
+1. Préparer deux clients de test, une API avec `TURN_URLS` / `TURN_SHARED_SECRET` configurés et une base migrée ; établir un appel audio puis vidéo 1-1. Vérifier que des lignes sont écrites dans `call_quality_samples` pendant l'appel.
 2. Faire une série témoin sans dégradation réseau.
 3. Refaire la série avec une seule variable modifiée à la fois, puis avec une combinaison :
    - latence : `tc qdisc replace dev <interface> root netem delay 100ms`;
@@ -22,7 +22,7 @@ Comparer les mesures WebRTC (RTT, jitter, perte de paquets, débit et type de ca
 4. Appliquer la dégradation sur le chemin réseau du client concerné ; répéter sur l'autre extrémité pour contrôler les deux directions. Noter l'interface, la machine, le sens et la configuration exacte.
 5. Prévoir au moins trois répétitions par scénario, avec une durée identique. Enregistrer le navigateur, le système, le codec si disponible, l'identifiant d'appel, les heures de début/fin et les interruptions observées.
 6. Restaurer le réseau après chaque essai : `tc qdisc del dev <interface> root`.
-7. Exporter les échantillons de call_quality_samples et leur associer le label expérimental degraded (0 pour le témoin, 1 pour un scénario dégradé). Le label décrit l'injection réseau, pas une vérité sur la qualité perçue. Ajouter séparément une note utilisateur si une mesure subjective est recueillie.
+7. Exporter les échantillons de `call_quality_samples` (le client collecte toutes les 5 s, envoie un lot après 6 échantillons (environ 30 s) à `POST /calls/:id/quality` et vide le reliquat au raccrochage) et leur associer le label expérimental degraded (0 pour le témoin, 1 pour un scénario dégradé). Le label décrit l'injection réseau, pas une vérité sur la qualité perçue. Ajouter séparément une note utilisateur si une mesure subjective est recueillie.
 
 Les commandes tc nécessitent Linux et les privilèges nécessaires. Utiliser un environnement de test isolé ; ne pas appliquer ces règles sur une interface de production.
 
@@ -53,6 +53,14 @@ python -m unittest discover -s scripts -p 'test_*.py'
 ~~~
 
 Le JSON contient précision, rappel, F1, matrice de confusion et répartition des labels par type de candidat ICE. Les métriques sont calculées contre le label d'injection réseau ; elles ne mesurent pas directement la qualité ressentie.
+
+## État des preuves au 25 novembre 2026
+
+- [x] Extraction unitaire de RTT, jitter, perte, débit et type de candidat depuis `RTCPeerConnection.getStats()`.
+- [x] Envoi REST par lots de 1 à 60 échantillons et vidage du dernier lot au raccrochage.
+- [x] Tests d'intégration de la route REST : attribution à l'utilisateur authentifié et rejet des horodatages invalides.
+- [ ] Capture d'une ligne réelle dans `call_quality_samples` pendant un appel WebRTC connecté.
+- [ ] Campagne `tc netem`, CSV labellisé et comparaison des détecteurs.
 
 ## Résultats à compléter après la campagne
 
