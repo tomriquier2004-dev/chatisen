@@ -11,6 +11,10 @@ COPY --chmod=0755 backup.sh restore.sh loop.sh healthcheck.sh /usr/local/bin/
 # Le volume de sauvegarde hérite de ce propriétaire à sa création.
 RUN mkdir -p /backups && chown postgres:postgres /backups
 
+# gosu (inclus dans l'image PostgreSQL) ne sert qu'à son entrypoint d'origine, remplacé ci-dessous. Compilé
+# avec une version de Go ancienne, il fait échouer le scan Trivy : on le retire plutôt que de l'ignorer.
+RUN rm -f /usr/local/bin/gosu
+
 USER postgres
 
 HEALTHCHECK --interval=5m --timeout=10s --start-period=10m \
