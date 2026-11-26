@@ -16,3 +16,23 @@ updates:
       default-days: 7
     commit-message:
       prefix: "build"
+  # Images de base épinglées par condensat dans les Dockerfiles et les Compose (issue #43).
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+      - /infra/backup
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"
+  - package-ecosystem: docker-compose
+    directory: /infra/compose
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"

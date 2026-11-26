@@ -1,0 +1,91 @@
+name: Images
+
+# Construit les images du déploiement (API, client, sauvegardes), les scanne avec Trivy et, sur main,
+# les publie dans GHCR taguées par le SHA du commit (issue #12, ADR-0022). Pas de déploiement ici :
+# la VM est déployée à la main (docker compose pull puis up -d) jusqu'à la décision sur F09.
+#
+# Seuils de blocage Trivy (proposition de Tom, ADR-0015 à venir) : CRITICAL et HIGH avec
+# --ignore-unfixed. Les exceptions vont dans .trivyignore, chacune avec justification et date de revue.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "infra/backup/**"
+      - "infra/caddy/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "tsconfig.base.json"
+      - ".dockerignore"
+      - ".trivyignore"
+      - ".github/workflows/images.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Un push sur main a son propre groupe (par SHA) : GitHub ne remplace donc jamais une exécution en attente
+  # par la suivante, et chaque commit de main a ses images. Les PR sont annulées par un nouveau push.
+  group: images-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  images:
+    name: Image ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # publication dans GHCR (GITHUB_TOKEN), seulement sur main
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            file: apps/api/Dockerfile
+            context: .
+          - image: web
+            file: apps/web/Dockerfile
+            context: .
+          - image: postgres-backup
+            file: infra/backup/Dockerfile
+            context: infra/backup
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Construire l'image
+        env:
+          IMAGE: ${{ matrix.image }}
+          DOCKERFILE: ${{ matrix.file }}
+          CONTEXT: ${{ matrix.context }}
+        run: docker build --file "$DOCKERFILE" --tag "chatisen-$IMAGE:scan" "$CONTEXT"
+
+      - name: Scan Trivy (CRITICAL et HIGH bloquants, failles sans correctif ignorées)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: chatisen-${{ matrix.image }}:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+          format: table
+
+      - name: Publier dans GHCR (SHA du commit et main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          IMAGE: ${{ matrix.image }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}/${IMAGE}"
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          for tag in "sha-${GITHUB_SHA::12}" main; do
+            docker tag "chatisen-${IMAGE}:scan" "${repo}:${tag}"
+            docker push "${repo}:${tag}"
+          done
