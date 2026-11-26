@@ -1,21 +1,5 @@
 # Règles du réseau `default` créées par Google, reprises telles quelles, et accès SSH par IAP.
-# Ordre à respecter (infra/README.md, issue #112) : 1) cette PR ajoute chatisen-ssh-iap ;
-# 2) chaque membre teste `gcloud compute ssh ... --tunnel-through-iap` ; 3) une PR suivante supprime
-# default_ssh. Supprimer default_ssh avant l'étape 2 risque de verrouiller l'équipe dehors.
-
-resource "google_compute_firewall" "default_ssh" {
-  name          = "default-allow-ssh"
-  network       = "default"
-  description   = "Allow SSH from anywhere"
-  direction     = "INGRESS"
-  priority      = 65534
-  source_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-}
+# `default-allow-ssh` (port 22 ouvert à Internet) a été supprimée le 26/11/2026 : le SSH passe seulement par IAP (chatisen-ssh-iap). Ne pas la recréer.
 
 resource "google_compute_firewall" "default_internal" {
   name          = "default-allow-internal"

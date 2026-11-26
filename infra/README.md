@@ -86,7 +86,7 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | 3478 | UDP et TCP | `chatisen-turn` | coturn | ouvert, rien n'écoute avant le déploiement de coturn |
 | 5349 | TCP | _retiré de `chatisen-turn` par Terraform_ | coturn en TLS | fermé (ADR-0016) |
 | 49152-49252 | UDP | `chatisen-turn` | relais média de coturn | ouvert, rien n'écoute avant coturn |
-| 22 | TCP | `default-allow-ssh` | SSH (OS Login, clé) | **ouvert à Internet, à supprimer** une fois IAP testé par chacun |
+| 22 | TCP | _`default-allow-ssh` supprimée le 26/11/2026_ | SSH ouvert à Internet | fermé |
 | 22 | TCP | `chatisen-ssh-iap` | SSH par IAP, source `35.235.240.0/20` | créée par Terraform |
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
@@ -122,7 +122,7 @@ gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE
 gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
 ```
 
-5. Seulement quand tout le monde a réussi, fermer l'accès ouvert à tout Internet : une PR retire `google_compute_firewall.default_ssh` de `terraform/network.tf` (et son bloc `import`), puis `terraform plan` doit annoncer exactement `1 to destroy` avant `apply`. Ne plus supprimer la règle à la main : Terraform la recréerait.
+5. Fait le 26/11/2026 : `default-allow-ssh` est supprimée. Ne pas la recréer, ni à la main ni dans Terraform.
 
 Puis prouver la fermeture depuis un réseau qui laisse sortir le port 22 (la section ci-dessous distingue « filtré » et « refusé »), et consigner la sortie dans `docs/reports/`. Ensuite, ajouter `--tunnel-through-iap` aux commandes `gcloud compute ssh` de ce document. Le bouton « SSH » de la console devrait continuer de fonctionner, car il se connecte depuis des adresses de Google : à vérifier après la fermeture.
 

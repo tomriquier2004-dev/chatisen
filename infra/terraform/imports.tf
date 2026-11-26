@@ -28,13 +28,7 @@ import {
 }
 
 # Règles créées par Google avec le réseau `default`, et compte de service de la VM (inventaire du 26/11/2026,
-# docs/reports/inventaire-gcp-2026-11-26.md). `default-allow-ssh` est importée pour pouvoir la supprimer
-# par une PR, une fois le SSH par IAP testé par chaque membre.
-
-import {
-  to = google_compute_firewall.default_ssh
-  id = "projects/${var.project_id}/global/firewalls/default-allow-ssh"
-}
+# docs/reports/inventaire-gcp-2026-11-26.md).
 
 import {
   to = google_compute_firewall.default_internal
