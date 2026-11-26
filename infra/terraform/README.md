@@ -1,6 +1,6 @@
 # Terraform : ressources GCP de ChatISEN
 
-Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (statut « proposé »). Cette première version **reprend sans les modifier** les ressources créées à la main le 23 novembre 2026 ([ADR-0012](../../docs/adr/0012-deploiement-et-hebergement.md)) : VM `chatisen-prod`, IP `chatisen-ip`, règles `chatisen-web` et `chatisen-turn`, calendrier `arret-nuit-minuit`. Elle décrit aussi les règles `default-*` du réseau, le compte de service `chatisen-vm`, la règle `chatisen-ssh-iap` et l'API IAP (`network.tf`, `iam.tf`). Cloud SQL, la VM TURN, les rôles des comptes de service et le load balancer viendront dans des PR suivantes.
+Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (statut « proposé »). Cette première version **reprend sans les modifier** les ressources créées à la main le 23 novembre 2026 ([ADR-0012](../../docs/adr/0012-deploiement-et-hebergement.md)) : VM `chatisen-prod`, IP `chatisen-ip`, règles `chatisen-web` et `chatisen-turn`, calendrier `arret-nuit-minuit`. Elle décrit aussi les règles `default-*` du réseau, le compte de service `chatisen-vm`, la règle `chatisen-ssh-iap` et l'API IAP (`network.tf`, `iam.tf`). Elle crée l'instance Cloud SQL ([ADR-0017](../../docs/adr/0017-base-de-donnees-cloud-sql.md), `sql.tf`). La VM TURN, les rôles des comptes de service et le load balancer viendront dans des PR suivantes.
 
 **État (26/11/2026)** : `terraform plan` contre le projet affiche « 5 to import, 0 to add, 0 to change, 0 to destroy » ; `compute.tf` décrit les ressources existantes.
 
@@ -20,6 +20,7 @@ Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (s
 | Projet de quota des identifiants, activation des APIs | `roles/serviceusage.serviceUsageAdmin` |
 | Créer et modifier les règles de pare-feu | `roles/compute.securityAdmin` |
 | Lire le compte de service de la VM (import) | `roles/iam.serviceAccountViewer` |
+| Créer Cloud SQL et son accès privé (`sql.tf`) | `roles/cloudsql.admin`, `roles/compute.networkAdmin`, `roles/servicenetworking.networksAdmin` |
 | Se connecter par le tunnel IAP | `roles/iap.tunnelResourceAccessor`, `roles/compute.osLogin`, et `roles/iam.serviceAccountUser` sur le compte `chatisen-vm` |
 
 Ils sont accordés par un administrateur IAM du projet (console : IAM et administration, IAM, Accorder l'accès).
@@ -49,6 +50,21 @@ Ils sont accordés par un administrateur IAM du projet (console : IAM et adminis
 8. Rejouer `terraform plan` jusqu'à lire **`0 to add, 0 to change, 0 to destroy`** (hors imports), puis `No changes` après l'`apply`. C'est la preuve attendue (ADR-0018, « Ressources existantes importées, `terraform plan` sans changement »).
 9. `terraform apply` : avec des imports seuls, il n'écrit que l'état dans le bucket, rien sur GCP.
 10. Relire `git diff` : ni IP, ni identifiant de projet, ni `.tfstate`, ni `terraform.tfvars`.
+
+## Cloud SQL (`sql.tf`)
+
+- Instance `chatisen-pg`, PostgreSQL 16, `db-f1-micro`, zonale en `europe-west1-b`, **IP privée seulement** (accès privé aux services sur le réseau `default`), TLS obligatoire (`ENCRYPTED_ONLY`), sauvegarde quotidienne à 02:00 UTC gardée 7 jours, `deletion_protection`.
+- Mot de passe de l'utilisateur `chatisen` : jamais dans un fichier. Il passe par la variable d'environnement `TF_VAR_db_password` ; c'est un attribut *write-only*, absent du plan et de l'état. Le fixer au premier `apply` ; pour le changer, incrémenter `db_password_version`.
+  ```powershell
+  $env:TF_VAR_db_password = -join ((48..57 + 97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
+  ```
+  Le même mot de passe va ensuite dans le `.env` de la VM (`DATABASE_URL`), pas ailleurs.
+- Coût : l'instance est facturée tant qu'elle tourne, même sans trafic. Pour l'arrêter : `terraform apply -var="sql_activation_policy=NEVER"` ; pour la relancer, `ALWAYS`. Le stockage reste facturé à l'arrêt.
+- Vérifier depuis la VM (tunnel IAP) que la connexion est chiffrée :
+  ```bash
+  sudo docker run --rm -it postgres:16 psql "host=<IP_PRIVEE> user=chatisen dbname=chatisen sslmode=require" -c "select ssl from pg_stat_ssl where pid = pg_backend_pid();"
+  ```
+  `<IP_PRIVEE>` : `terraform output sql_private_ip`. Résultat attendu : `t`.
 
 ## Vérifications
 
