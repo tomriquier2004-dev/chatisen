@@ -20,7 +20,7 @@ Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (s
 | Projet de quota des identifiants, activation des APIs | `roles/serviceusage.serviceUsageAdmin` |
 | Créer et modifier les règles de pare-feu | `roles/compute.securityAdmin` |
 | Lire le compte de service de la VM (import) | `roles/iam.serviceAccountViewer` |
-| Se connecter par le tunnel IAP | `roles/iap.tunnelResourceAccessor` |
+| Se connecter par le tunnel IAP | `roles/iap.tunnelResourceAccessor`, `roles/compute.osLogin`, et `roles/iam.serviceAccountUser` sur le compte `chatisen-vm` |
 
 Ils sont accordés par un administrateur IAM du projet (console : IAM et administration, IAM, Accorder l'accès).
 

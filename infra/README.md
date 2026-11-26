@@ -109,6 +109,13 @@ Respecter cet ordre, sinon on se verrouille dehors. Les étapes 1 à 4 s'ajouten
 gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE>" --role="roles/iap.tunnelResourceAccessor"
 ```
 
+Le tunnel ne suffit pas : la VM tourne avec le compte de service `chatisen-vm`, et OS Login refuse alors la clé (« Server refused our key ») tant que le membre n'a pas aussi « Utilisateur du compte de service » sur ce compte, en plus de « Connexion au système d'exploitation Compute » (constaté le 26/11/2026) :
+
+```powershell
+gcloud iam service-accounts add-iam-policy-binding chatisen-vm@<ID_PROJET>.iam.gserviceaccount.com --member="user:<COMPTE_GOOGLE>" --role="roles/iam.serviceAccountUser"
+gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE>" --role="roles/compute.osLogin"
+```
+
 4. **Chacun** teste la connexion par le tunnel :
 
 ```powershell
