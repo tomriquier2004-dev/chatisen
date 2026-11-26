@@ -197,7 +197,7 @@ Le test des ports UDP du relais TURN (49152-49252) se fera avec coturn déployé
 
 ## Déployer le squelette (J1)
 
-Périmètre validé avec Tom : la CI **construit et publie les images** dans GHCR (workflow `images.yml`), et la VM est déployée **à la main** avec `docker compose`. Le déploiement automatique (F09) viendra après J1. Décision : [ADR-0020](../docs/adr/0020-registre-ghcr-et-deploiement-manuel-j1.md).
+Périmètre validé avec Tom : la CI **construit et publie les images** dans GHCR (workflow `images.yml`), et la VM est déployée **à la main** avec `docker compose`. Le déploiement automatique (F09) viendra après J1. Décision : [ADR-0022](../docs/adr/0022-registre-ghcr-et-deploiement-manuel-j1.md).
 
 **Testé** : en local, en HTTP (`SITE_ADDRESS=:80`), avec les images construites par `compose.build.yml` : les quatre services passent à « healthy », la page et `/api/v1/health/ready` répondent par Caddy, l'inscription et la connexion réussissent, `/metrics` n'est pas servi, et seul Caddy publie des ports. **Pas encore testé sur la VM** : le certificat HTTPS, le téléchargement des images depuis GHCR et les sauvegardes chiffrées.
 

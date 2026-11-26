@@ -1,4 +1,4 @@
-# ADR-0020 : Registre GHCR, images tagguées par SHA, scan Trivy bloquant et déploiement manuel en J1
+# ADR-0022 : Registre GHCR, images tagguées par SHA, scan Trivy bloquant et déploiement manuel en J1
 
 - **Statut** : proposé
 - **Date** : 2026-11-25

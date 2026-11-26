@@ -1,4 +1,4 @@
-# Déploiement sur la VM (issue #12, ADR-0012, ADR-0016, ADR-0020) : Caddy, API, PostgreSQL, Redis, sauvegardes.
+# Déploiement sur la VM (issue #12, ADR-0012, ADR-0016, ADR-0022) : Caddy, API, PostgreSQL, Redis, sauvegardes.
 # Seul Caddy publie des ports (80, 443/tcp). PostgreSQL, Redis et l'API restent sur le réseau Docker interne.
 # coturn et la supervision ont leur propre Compose (infra/coturn, infra/observability).
 #
