@@ -107,6 +107,7 @@ Règle : **`apps/web` et `apps/api` ne dépendent jamais l'un de l'autre**, uniq
 ```mermaid
 erDiagram
     USERS ||--o{ SESSIONS : "possède"
+    USERS ||--o{ USER_IDENTITIES : "est lié à"
     USERS ||--o{ CONVERSATION_MEMBERS : "est membre"
     CONVERSATIONS ||--o{ CONVERSATION_MEMBERS : "contient"
     CONVERSATIONS ||--o{ MESSAGES : "contient"
@@ -121,8 +122,14 @@ erDiagram
         uuid id PK
         citext username UK
         citext email UK
-        text password_hash "Argon2id"
+        text password_hash "Argon2id, NULL si compte Microsoft (ADR-0020)"
         text display_name
+        timestamptz created_at
+    }
+    USER_IDENTITIES {
+        text provider PK "microsoft"
+        text subject PK "tid:oid"
+        uuid user_id FK
         timestamptz created_at
     }
     SESSIONS {
@@ -208,6 +215,9 @@ Tous les schémas sont définis **une seule fois** dans `packages/shared` et imp
 | POST | `/auth/login` | Connexion → access token + cookie refresh | FR-01, FR-04 |
 | POST | `/auth/refresh` | Rotation du refresh token | FR-04 |
 | POST | `/auth/logout` | Révocation de la session | FR-04 |
+| GET | `/auth/providers` | Fournisseurs de connexion activés (`microsoft: true/false`) | FR-01 |
+| GET | `/auth/microsoft/start` | Redirection vers Microsoft (PKCE, `state`, `nonce` en cookie signé) | FR-01 (ADR-0020) |
+| GET | `/auth/microsoft/callback` | Retour de Microsoft → session ChatISEN, redirection vers `/` ou `/?authError=` | FR-01, FR-04 (ADR-0020) |
 | GET | `/users/me` · PATCH `/users/me` | Profil | FR-02 |
 | GET | `/users?query=` | Recherche d'utilisateurs | FR-02 |
 | GET | `/conversations` | Conversations de l'utilisateur + non-lus | FR-06 |
@@ -317,6 +327,7 @@ sequenceDiagram
 ```
 
 - **Rotation avec détection de réutilisation** : si un refresh token déjà révoqué est présenté, toute la famille de sessions (`family_id`) est révoquée — signe de vol de token.
+- **Connexion Microsoft** ([ADR-0020](adr/0020-connexion-microsoft-entra-id.md)) : flux Authorization Code + PKCE côté API ; le jeton ID est validé par l'API, puis la session est **la même** que ci-dessus (cookie de refresh posé au retour, le client appelle `/auth/refresh`). Compte retrouvé par `tid:oid`, lié par adresse seulement si Microsoft la garantit (`xms_edov`).
 - **Socket.IO et expiration** : le JWT est vérifié au handshake ; le serveur programme une déconnexion à l'expiration (`exp`). Le client rafraîchit puis se reconnecte avec le nouveau token, ce qui réutilise le mécanisme de reconnexion (§ 6.3).
 
 ### 6.2 Envoi d'un message
@@ -722,6 +733,7 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 | --- | --- | --- |
 | Interception réseau | TLS partout (Caddy) ; WSS ; média chiffré **DTLS-SRTP** (imposé par WebRTC) | Le relais TURN voit les métadonnées (IP, volume), pas le contenu |
 | Vol de mot de passe | Argon2id ; rate limiting sur `/auth/*` (`@fastify/rate-limit`, compteurs dans Redis) | Pas de MFA dans le périmètre Core |
+| Usurpation par connexion externe | Connexion Microsoft : PKCE, `state` en cookie signé, `nonce`, validation complète du jeton ID ; identité `tid:oid` ; pas de liaison sur une adresse non vérifiée (ADR-0020) | Dépendance à Microsoft pour les comptes sans mot de passe ; secret client à renouveler avant expiration |
 | Vol de session | Access token court en mémoire ; refresh token en cookie `httpOnly` avec rotation et détection de réutilisation | Un XSS peut encore utiliser le token tant que la page est ouverte |
 | Accès à une conversation d'autrui (IDOR) | Vérification d'appartenance **côté serveur** sur chaque route et chaque événement ; rooms choisies par le serveur et mises à jour en direct quand un membre est ajouté ou retiré (§ 5.3) | Si Redis perd un `socketsLeave`, un membre retiré peut encore recevoir des messages jusqu'à l'expiration de son access token (15 min max) |
 | Injection / payload malformé | Validation par schéma (TypeBox) sur tout le REST et tous les événements ; requêtes paramétrées | — |
@@ -810,3 +822,4 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0017](adr/0017-base-de-donnees-cloud-sql.md) | Base de données sur Cloud SQL pour PostgreSQL (hors de la VM) | proposé, rédigé |
 | [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
 | [ADR-0019](adr/0019-coturn-vm-dediee.md) | Isolation de coturn sur une VM dédiée (vue cible) | proposé, à valider |
+| [ADR-0020](adr/0020-connexion-microsoft-entra-id.md) | Connexion avec un compte Microsoft (Entra ID, OIDC) | proposé, rédigé |
