@@ -301,7 +301,7 @@ chmod 600 .env
 sudo docker compose --env-file .env -f compose.yml up -d
 ```
 
-Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
+Relier l'API au réseau `chatisen-observability` avec l'override `infra/compose/compose.observability.yml` (`docker compose -f compose.prod.yml -f compose.observability.yml up -d` ; `API_HOST=0.0.0.0` est déjà réglé dans `compose.prod.yml`) ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
 
 Accès opérateur par tunnel SSH, sans ouvrir de port public :
 
