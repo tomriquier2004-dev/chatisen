@@ -117,6 +117,7 @@ export const RATE_RULES = {
   userSearchPerUser: { name: "user-search", limit: 30, windowMs: MINUTE, key: (r) => r.auth?.userId },
   // Collecte getStats : 30 lots/minute/utilisateur, seuil à calibrer par les mesures (issue #13).
   callQualityPerUser: { name: "call-quality", limit: 30, windowMs: MINUTE, key: (r) => r.auth?.userId },
+  turnCredentialsPerUser: { name: "turn-credentials", limit: 10, windowMs: MINUTE, key: (r) => r.auth?.userId },
 } satisfies Record<string, RateRule>;
 
 /**

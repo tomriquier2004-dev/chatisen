@@ -17,8 +17,10 @@ import { authRoutes } from "./modules/auth/routes";
 import { noopMembershipEvents, type MembershipEvents } from "./modules/conversations/events";
 import { conversationRoutes } from "./modules/conversations/routes";
 import { callRoutes } from "./modules/calls/routes";
+import { turnRoutes } from "./modules/turn/routes";
 import { messageRoutes } from "./modules/messages/routes";
 import { TokenService } from "./modules/auth/tokens";
+import { callMetrics } from "./realtime/call-metrics";
 import { userRoutes } from "./modules/users/routes";
 import { makeAuthenticate } from "./plugins/authenticate";
 import { MemoryRateLimiter, type RateLimiter } from "./plugins/rate-limit";
@@ -103,6 +105,33 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
     reply.code(404).send(errorBody("NOT_FOUND", `Route introuvable : ${request.method} ${request.url}`, request.id)),
   );
 
+  // Endpoint réservé au réseau interne Docker ; Caddy ne publie pas /metrics vers Internet.
+  app.get("/metrics", async (_request, reply) => {
+    const qualityRows = await app.db
+      .selectFrom("call_quality_samples")
+      .select(["candidate_type", sql<number>`count(*)`.as("samples")])
+      .groupBy("candidate_type")
+      .execute();
+    const callsByCandidate = await sql<{ candidate_type: string; calls: number }>`
+      SELECT candidate_type, COUNT(*)::int AS calls
+      FROM (
+        SELECT DISTINCT ON (call_id) call_id, candidate_type
+        FROM call_quality_samples
+        ORDER BY call_id, ts DESC
+      ) latest
+      GROUP BY candidate_type
+    `.execute(app.db);
+    const qualityMetrics = [
+      "# HELP chatisen_call_quality_samples_total Stored WebRTC quality samples by selected ICE candidate type.",
+      "# TYPE chatisen_call_quality_samples_total counter",
+      ...qualityRows.map((row) => `chatisen_call_quality_samples_total{candidate_type="${String(row.candidate_type).replaceAll('"', '\\"')}"} ${Number(row.samples)}`),
+      "# HELP chatisen_calls_by_ice_candidate_type Distinct calls classified by their latest selected ICE candidate.",
+      "# TYPE chatisen_calls_by_ice_candidate_type gauge",
+      ...callsByCandidate.rows.map((row) => `chatisen_calls_by_ice_candidate_type{candidate_type="${String(row.candidate_type).replaceAll('"', '\\"')}"} ${Number(row.calls)}`),
+    ];
+    return reply.type("text/plain; version=0.0.4; charset=utf-8")
+      .send(callMetrics.render() + qualityMetrics.join("\n") + "\n");
+  });
   app.register(
     async (api) => {
       api.get(
@@ -139,6 +168,13 @@ export function buildApp(config: Config, deps: AppDeps): FastifyInstance {
       await api.register(userRoutes, { authenticate });
       await api.register(messageRoutes, { authenticate });
       await api.register(callRoutes, { authenticate, limits });
+      await api.register(turnRoutes, {
+        authenticate,
+        limits,
+        sharedSecret: config.TURN_SHARED_SECRET,
+        urls: config.TURN_URLS,
+        credentialTtlSeconds: config.TURN_CREDENTIAL_TTL_SECONDS,
+      });
       await api.register(conversationRoutes, {
         authenticate,
         events: deps.membershipEvents ?? noopMembershipEvents,

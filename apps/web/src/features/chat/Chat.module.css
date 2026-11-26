@@ -23,6 +23,17 @@
   margin-left: auto;
 }
 
+.callActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.callActions button {
+  min-height: 36px;
+}
+
 .subtitle {
   font: var(--text-caption);
   color: var(--color-text-secondary);

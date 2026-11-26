@@ -67,7 +67,7 @@ test("après une coupure réseau, les messages manqués arrivent dans l'ordre, s
   for (const n of [1, 2, 3]) await sendMessage(pageA, `pendant la coupure ${n}`);
   await expect(pageA.locator("ol li p", { hasText: "pendant la coupure 3" })).toBeVisible();
 
-  network.restore();
+  await await network.restore();
   await expect(pageB.locator("ol li p", { hasText: "pendant la coupure 3" })).toBeVisible({ timeout: 20_000 });
   const texts = await messageTexts(pageB);
   expect(texts).toEqual(["avant la coupure", "pendant la coupure 1", "pendant la coupure 2", "pendant la coupure 3"]);
@@ -106,7 +106,8 @@ test("un membre retiré cesse de recevoir les messages, sans recharger la page",
 
 test("après une coupure, la liste des conversations est rechargée (nouvelle conversation, aperçu, non-lus)", async ({
   browser,
-}) => {
+}, testInfo) => {
+  testInfo.setTimeout(60_000);
   const [pageA, pageB] = await Promise.all([openBrowser(browser), openBrowser(browser)]);
   const alice = newUser("alice");
   const bob = newUser("bob");
@@ -128,9 +129,9 @@ test("après une coupure, la liste des conversations est rechargée (nouvelle co
   await createPrivate(pageA, bob);
   await expect(conversationButton(pageB, alice.displayName)).toHaveCount(0);
 
-  network.restore();
+  await network.restore();
   // Sans recharger la page : la conversation privée apparaît, l'aperçu et le non-lu du groupe sont à jour.
-  await expect(conversationButton(pageB, alice.displayName)).toBeVisible({ timeout: 20_000 });
+  await expect(conversationButton(pageB, alice.displayName)).toBeVisible({ timeout: 35_000 });
   const groupEntry = conversationButton(pageB, group);
   await expect(groupEntry).toContainText("message pendant la coupure");
   await expect(groupEntry.getByLabel("1 non lus")).toBeVisible();

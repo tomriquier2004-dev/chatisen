@@ -18,6 +18,7 @@ import { AppError } from "../errors";
 import { requireMember } from "../modules/conversations/service";
 import { markRead, messagesAfter, storeMessage } from "../modules/messages/service";
 import { conversationRoom, sessionRoom, userRoom, type RealtimeEvents } from "./events";
+import { CallSignaling } from "./calls";
 import { MAX_CONNECTIONS_PER_USER, MESSAGE_SEND_RULE, type RateLimiter } from "../plugins/rate-limit";
 
 export { conversationRoom, sessionRoom, userRoom } from "./events";
@@ -49,6 +50,8 @@ export async function attachRealtime(
     events?: RealtimeEvents;
     /** Limites des événements (issue #88) ; absentes ou désactivées : aucune limite. */
     rateLimit?: { limiter: RateLimiter; enabled: boolean };
+    callRingTimeoutSeconds?: number;
+    callDisconnectGraceSeconds?: number;
   },
 ): Promise<Realtime> {
   const io: IoServer = new Server(app.server, {
@@ -108,10 +111,16 @@ export async function attachRealtime(
     }
   });
 
-  opts.events?.bind(io);
+  opts.events?.bind(io, app.db);
+  const callSignaling = new CallSignaling(io, app.db, {
+    ringTimeoutMs: (opts.callRingTimeoutSeconds ?? 30) * 1000,
+    disconnectGraceMs: (opts.callDisconnectGraceSeconds ?? 10) * 1000,
+    ...(limits ? { limits } : {}),
+  }, app.log);
 
   io.on("connection", (socket) => {
     const log = app.log.child({ socketId: socket.id, userId: socket.data.userId });
+    callSignaling.attach(socket);
 
     socket.on(
       "message:send",
@@ -153,6 +162,7 @@ export async function attachRealtime(
 
   app.addHook("onClose", async () => {
     await io.close();
+    await callSignaling.close();
     await Promise.all([pub?.quit(), sub?.quit()]);
   });
 

@@ -1,0 +1,21 @@
+groups:
+  - name: chatisen-calls
+    rules:
+      - alert: CoturnUnavailable
+        expr: up{job="coturn"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: coturn
+        annotations:
+          summary: "coturn metrics endpoint is unreachable"
+          description: "Check the TURN VM, coturn container health, firewall and UDP listeners."
+      - alert: CallNegotiationFailureRateHigh
+        expr: increase(chatisen_call_negotiation_failures_total[5m]) / clamp_min(increase(chatisen_calls_started_total[5m]), 1) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "WebRTC negotiation failures exceed 20%"
+          description: "Inspect API logs, ICE candidate types and coturn health."
