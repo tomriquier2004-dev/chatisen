@@ -8,6 +8,7 @@
     "build": "tsup",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "openapi": "tsx src/openapi/generate.ts",
     "test": "vitest run"
   },
   "dependencies": {

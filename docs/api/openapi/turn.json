@@ -1,0 +1,157 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "VALIDATION_FAILED",
+                  "UNAUTHENTICATED",
+                  "FORBIDDEN",
+                  "NOT_FOUND",
+                  "USERNAME_TAKEN",
+                  "EMAIL_TAKEN",
+                  "INVALID_CREDENTIALS",
+                  "CONVERSATION_FORBIDDEN",
+                  "ALREADY_MEMBER",
+                  "NOT_A_GROUP",
+                  "RATE_LIMITED",
+                  "CALL_NOT_FOUND",
+                  "CALL_NOT_ACTIVE",
+                  "CALL_BUSY",
+                  "CALL_ALREADY_ENDED",
+                  "INTERNAL_ERROR"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Spécification générée à partir des schémas TypeBox des routes (apps/api/src/openapi/generate.ts). Les événements Socket.IO ne sont pas décrits ici (docs/architecture.md § 5.2).",
+    "title": "ChatISEN API : module turn. Identifiants TURN éphémères",
+    "version": "0.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/turn/credentials": {
+      "get": {
+        "operationId": "get_turn_credentials",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "credential": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ttl": {
+                      "maximum": 86400,
+                      "minimum": 60,
+                      "type": "integer"
+                    },
+                    "urls": {
+                      "items": {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 8,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "username": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "urls",
+                    "username",
+                    "credential",
+                    "ttl"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Succès"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          }
+        },
+        "summary": "Identifiants TURN éphémères",
+        "tags": [
+          "turn"
+        ],
+        "x-requirements": [
+          "FR-09",
+          "FR-10"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ]
+}

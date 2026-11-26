@@ -1,0 +1,239 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "VALIDATION_FAILED",
+                  "UNAUTHENTICATED",
+                  "FORBIDDEN",
+                  "NOT_FOUND",
+                  "USERNAME_TAKEN",
+                  "EMAIL_TAKEN",
+                  "INVALID_CREDENTIALS",
+                  "CONVERSATION_FORBIDDEN",
+                  "ALREADY_MEMBER",
+                  "NOT_A_GROUP",
+                  "RATE_LIMITED",
+                  "CALL_NOT_FOUND",
+                  "CALL_NOT_ACTIVE",
+                  "CALL_BUSY",
+                  "CALL_ALREADY_ENDED",
+                  "INTERNAL_ERROR"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "HealthLiveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          },
+          "uptimeSeconds": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "uptimeSeconds"
+        ],
+        "type": "object"
+      },
+      "HealthReadyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "additionalProperties": false,
+            "properties": {
+              "postgres": {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              },
+              "redis": {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "postgres"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Spécification générée à partir des schémas TypeBox des routes (apps/api/src/openapi/generate.ts). Les événements Socket.IO ne sont pas décrits ici (docs/architecture.md § 5.2).",
+    "title": "ChatISEN API : module plateforme. Sondes de santé",
+    "version": "0.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "get_health_live",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthLiveResponse"
+                }
+              }
+            },
+            "description": "Succès"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          }
+        },
+        "security": [],
+        "summary": "Sonde de vie",
+        "tags": [
+          "plateforme"
+        ],
+        "x-requirements": [
+          "NFR-03"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "get_health_ready",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReadyResponse"
+                }
+              }
+            },
+            "description": "Succès"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReadyResponse"
+                }
+              }
+            },
+            "description": "Réponse"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erreur au format unique (FR-18)"
+          }
+        },
+        "security": [],
+        "summary": "Sonde de disponibilité (PostgreSQL et Redis)",
+        "tags": [
+          "plateforme"
+        ],
+        "x-requirements": [
+          "NFR-03",
+          "NFR-06"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ]
+}
