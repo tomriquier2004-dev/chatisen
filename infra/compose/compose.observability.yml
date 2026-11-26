@@ -1,0 +1,12 @@
+# Override : relie l'API au réseau de supervision pour que Prometheus scrute api:3000/metrics (issue #123).
+# Le réseau est créé une fois, avant le premier lancement : docker network create chatisen-observability
+# (voir « Prometheus et Grafana » dans infra/README.md). Usage :
+#   docker compose -f compose.prod.yml -f compose.observability.yml up -d
+# /metrics n'est pas publié par Caddy : seul Prometheus, sur ce réseau privé, l'atteint.
+services:
+  api:
+    networks: [default, observability]
+networks:
+  observability:
+    name: chatisen-observability
+    external: true

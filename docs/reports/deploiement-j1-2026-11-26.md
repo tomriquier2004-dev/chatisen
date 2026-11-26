@@ -35,6 +35,19 @@ Déployer à la main les images publiées par la CI sur la VM `chatisen-prod` (C
 
 Le test ne distingue pas « refusé » de « filtré ».
 
+## Supervision (Prometheus et Grafana)
+
+Pile `infra/observability/` lancée sur la VM, API reliée au réseau `chatisen-observability` par l'override `infra/compose/compose.observability.yml` (la version de `infra/` déployée est celle de la branche de la PR de l'override, `a131866`, avec `IMAGE_TAG` inchangé).
+
+| Vérification | Résultat | Source |
+| --- | --- | --- |
+| Cibles Prometheus | ✅ `api` et `prometheus` à 1 (UP) ; ❌ `coturn` à 0 : coturn n'est pas déployé | `/api/v1/targets` et requête `up`, depuis la VM |
+| Grafana | ✅ répond (`database: ok`, version 11.4.0), source de données Prometheus et tableau de bord `ChatISEN — appels et TURN` provisionnés | API Grafana, depuis la VM |
+| Règles d'alerte | ✅ `CoturnUnavailable` et `CallNegotiationFailureRateHigh` chargées (état `ok`, sans preuve de déclenchement) | `/api/v1/rules` |
+| `/metrics` non exposé à Internet | ✅ `https://…/metrics` renvoie la page d'accueil du client (repli SPA de Caddy, 411 octets HTML), sans ligne de métriques | `curl` depuis Internet |
+| Accès à Grafana et Prometheus | ✅ liés à `127.0.0.1` de la VM, accès par tunnel SSH seulement (ports 3000 et 9090 non joignables, voir plus haut) | `docker ps`, test de ports |
+
+Non vérifié : l'affichage du tableau de bord dans un navigateur (les panneaux sont vides sans appels), le déclenchement d'une alerte, et le démarrage de la pile après un redémarrage de la VM autrement que par `restart: unless-stopped` (la VM a redémarré une fois et la pile est revenue).
 ## Écarts et limites
 
 - **Bug trouvé et corrigé** : l'API refuse de démarrer sur un hôte exposé sans `TURN_SHARED_SECRET` (32 caractères minimum) ni `TURN_URLS`, et `compose.prod.yml` ne les transmettait pas. Contournement provisoire sur la VM (fichier non suivi), puis correction durable dans #159 ; le fichier de contournement a été retiré.
