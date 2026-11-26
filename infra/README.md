@@ -274,6 +274,7 @@ puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à 
 | `github/` | Rulesets du dépôt décrits en code |
 | `coturn/` | Configuration et Compose du relais TURN dédié |
 | `observability/` | Prometheus, Grafana, dashboard et règles d'alerte |
+| `terraform/` | Ressources GCP décrites en code (ADR-0018) : reprise des ressources existantes, non appliquée |
 
 Restent à finaliser : workflow de déploiement applicatif, provisionnement de la VM coturn après validation humaine, et test opérationnel des alertes sur l'infrastructure cible.
 
