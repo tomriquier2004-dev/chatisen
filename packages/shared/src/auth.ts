@@ -67,3 +67,31 @@ export type AuthResponse = Static<typeof AuthResponse>;
 
 /** Nom et chemin du cookie de refresh : envoyé uniquement aux routes d'authentification. */
 export const REFRESH_COOKIE = { name: "chatisen_refresh", path: "/api/v1/auth" } as const;
+
+/** GET /api/v1/auth/providers : fournisseurs de connexion activés sur ce déploiement (ADR-0020). */
+export const AuthProviders = Type.Object(
+  { password: Type.Literal(true), microsoft: Type.Boolean() },
+  { additionalProperties: false, $id: "AuthProviders" },
+);
+export type AuthProviders = Static<typeof AuthProviders>;
+
+/**
+ * Raisons d'échec de la connexion Microsoft, renvoyées au client dans `?authError=` après la
+ * redirection (le callback est une navigation du navigateur, pas un appel JSON).
+ */
+export const MICROSOFT_LOGIN_ERRORS = [
+  /** L'utilisateur a annulé ou refusé le consentement chez Microsoft. */
+  "MICROSOFT_DENIED",
+  /** État, nonce, échange du code ou jeton ID invalide ; tentative expirée. */
+  "MICROSOFT_FAILED",
+  /** Tenant Microsoft hors de la liste autorisée par le déploiement. */
+  "MICROSOFT_TENANT_NOT_ALLOWED",
+  /** Le jeton ne porte aucune adresse utilisable pour créer le compte. */
+  "MICROSOFT_EMAIL_MISSING",
+  /** Un compte local a cette adresse mais Microsoft ne garantit pas qu'elle appartient à l'utilisateur. */
+  "MICROSOFT_ACCOUNT_EXISTS",
+] as const;
+export type MicrosoftLoginError = (typeof MICROSOFT_LOGIN_ERRORS)[number];
+
+/** Cookie temporaire (état, nonce, vérificateur PKCE) entre le départ vers Microsoft et le retour. */
+export const MICROSOFT_FLOW_COOKIE = { name: "chatisen_oidc", path: "/api/v1/auth/microsoft" } as const;

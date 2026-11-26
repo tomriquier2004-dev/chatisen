@@ -10,7 +10,8 @@ export interface UsersTable {
   id: Generated<string>;
   username: string;
   email: string;
-  password_hash: string;
+  /** Absent pour un compte créé par la connexion Microsoft (migration 0003). */
+  password_hash: string | null;
   display_name: string;
   created_at: Generated<Timestamp>;
 }
@@ -22,6 +23,16 @@ export interface SessionsTable {
   family_id: string;
   expires_at: Timestamp;
   revoked_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+}
+
+export type IdentityProvider = "microsoft";
+
+/** Identité externe liée à un compte (ADR-0020). `subject` = `tid:oid` pour Microsoft. */
+export interface UserIdentitiesTable {
+  provider: IdentityProvider;
+  subject: string;
+  user_id: string;
   created_at: Generated<Timestamp>;
 }
 
@@ -91,6 +102,7 @@ export interface CallQualitySamplesTable {
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
+  user_identities: UserIdentitiesTable;
   conversations: ConversationsTable;
   conversation_members: ConversationMembersTable;
   messages: MessagesTable;
