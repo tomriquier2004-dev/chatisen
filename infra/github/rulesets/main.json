@@ -40,6 +40,9 @@
           },
           {
             "context": "Semgrep (SAST)"
+          },
+          {
+            "context": "Lint, typecheck, tests"
           }
         ]
       }
