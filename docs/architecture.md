@@ -659,7 +659,7 @@ Ces flux servent tels quels à l'atelier STRIDE (#27).
 | F20 | les deux | VM | Registre d'images | 443/tcp | HTTPS (pull) | TLS | à trancher | `docker compose pull` réussi ; images par digest (#43) | #12, #43 |
 | F21 | cible (manquant en J1) | postgres-backup | stockage hors de l'hôte (bucket à choisir) | 443/tcp | HTTPS | TLS + fichier chiffré age | **manquant** | restauration depuis la copie distante | #42 |
 
-Le client statique ne crée pas de flux réseau : il est construit par la CI (image ou artefact, à trancher dans #12) et servi par Caddy depuis `/srv/web`. Les secrets de production viennent des GitHub Environments et d'un `.env` hors dépôt sur la VM (`chmod 600`, ADR-0012 § 6).
+Le client statique ne crée pas de flux réseau : il est construit par la CI (image ou artefact, à trancher dans #12) et servi par Caddy depuis `/srv/web`. Les secrets de production viennent des GitHub Environments et d'un `.env` hors dépôt sur la VM (`chmod 600`, ADR-0012 § 6). En cible, l'[ADR-0021](adr/0021-secrets-identites-iam.md) (proposé) remplace ce qu'il peut par des identités IAM (Cloud SQL, bucket des sauvegardes, CI par Workload Identity Federation) ; restent `JWT_SECRET`, `TURN_SHARED_SECRET` et `MICROSOFT_CLIENT_SECRET`, fournis à la VM par Terraform.
 
 #### Fermé (à prouver)
 
@@ -728,6 +728,7 @@ Le modèle de menaces détaillé (STRIDE) et les exigences `SEC-xx` sont dans le
 | XSS | Échappement par défaut de Preact (aucun `dangerouslySetInnerHTML`) ; CSP stricte servie par Caddy | — |
 | Abus TURN (relais ouvert) | Identifiants éphémères HMAC ; `denied-peer-ip` sur les plages privées | — |
 | Données au repos | Volume Postgres sur l'hôte ; sauvegardes chiffrées par age avec une clé publique, clé privée hors du serveur (§ 8.1) | Sauvegardes sur le même hôte tant qu'aucune copie distante n'existe. **Pas de chiffrement de bout en bout des messages** : le serveur peut lire l'historique. Choix assumé (la recherche et l'historique côté serveur en dépendent), à énoncer dans le rapport |
+| Fuite d'un secret ou d'une clé de déploiement | Aucun secret dans le dépôt ; en cible, identités IAM à rôles étroits au lieu de mots de passe et de clés de compte de service, CI par Workload Identity Federation ([ADR-0021](adr/0021-secrets-identites-iam.md)) | Trois secrets d'exécution restent sur la VM (`JWT_SECRET`, `TURN_SHARED_SECRET`, `MICROSOFT_CLIENT_SECRET`) et dans l'état Terraform ; un rôle IAM trop large annule le bénéfice |
 | Chaîne d'approvisionnement | Semgrep, Dependabot (avec délai de 7 jours), règles pnpm, actions épinglées par SHA, Trivy | — |
 
 ---
@@ -810,3 +811,4 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | ADR-0017 | Base de données hors de la VM (Supabase) | brouillon, pas dans le dépôt ; à confirmer (prof, Tom) |
 | [ADR-0018](adr/0018-terraform-et-load-balancer-gcp.md) | Infrastructure as code (Terraform) et load balancer GCP | proposé, rédigé |
 | [ADR-0019](adr/0019-coturn-vm-dediee.md) | Isolation de coturn sur une VM dédiée (vue cible) | proposé, à valider |
+| [ADR-0021](adr/0021-secrets-identites-iam.md) | Secrets : identités IAM plutôt que Secret Manager (vue cible) | proposé, rédigé |
