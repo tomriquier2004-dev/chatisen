@@ -54,7 +54,7 @@ Ils sont accordés par un administrateur IAM du projet (console : IAM et adminis
 ## Cloud SQL (`sql.tf`)
 
 - Instance `chatisen-pg`, PostgreSQL 16, `db-f1-micro`, zonale en `europe-west1-b`, **IP privée seulement** (accès privé aux services sur le réseau `default`), TLS obligatoire (`ENCRYPTED_ONLY`), sauvegarde quotidienne à 02:00 UTC gardée 7 jours, `deletion_protection`.
-- Mot de passe de l'utilisateur `chatisen` : jamais dans un fichier. Il passe par la variable d'environnement `TF_VAR_db_password` ; c'est un attribut *write-only*, absent du plan et de l'état. Le fixer au premier `apply` ; pour le changer, incrémenter `db_password_version`.
+- Mot de passe de l'utilisateur `chatisen` : jamais dans un fichier. Il passe par la variable d'environnement `TF_VAR_db_password` ; c'est un attribut *write-only*, absent du plan et de l'état. Terraform l'exige à chaque `plan` et `apply` (sinon : « all of password_wo,password_wo_version must be specified »). Il n'est envoyé à GCP qu'à la création et quand `db_password_version` change : ensuite, une valeur quelconque suffit pour un `plan`. Pour le changer : nouvelle valeur et `db_password_version` + 1.
   ```powershell
   $env:TF_VAR_db_password = -join ((48..57 + 97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
   ```
