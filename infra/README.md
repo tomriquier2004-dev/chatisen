@@ -84,9 +84,10 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | --- | --- | --- | --- | --- |
 | 80, 443 | TCP | `chatisen-web` | Caddy : HTTP (redirection, validation du certificat) et HTTPS | ouvert à Internet |
 | 3478 | UDP et TCP | `chatisen-turn` | coturn | ouvert, rien n'écoute avant le déploiement de coturn |
-| 5349 | TCP | `chatisen-turn` | coturn en TLS | ouvert, **pas de service prévu** pour l'instant (ADR-0016) |
+| 5349 | TCP | _retiré de `chatisen-turn` par Terraform_ | coturn en TLS | fermé (ADR-0016) |
 | 49152-49252 | UDP | `chatisen-turn` | relais média de coturn | ouvert, rien n'écoute avant coturn |
-| 22 | TCP | `default-allow-ssh` | SSH (OS Login, clé) | **ouvert à Internet, à restreindre** (IAP) |
+| 22 | TCP | `default-allow-ssh` | SSH (OS Login, clé) | **ouvert à Internet, à supprimer** une fois IAP testé par chacun |
+| 22 | TCP | `chatisen-ssh-iap` | SSH par IAP, source `35.235.240.0/20` | créée par Terraform |
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
 | 3389 | TCP | _supprimée le 25/11/2026_ | RDP | fermé |
@@ -100,17 +101,7 @@ Aujourd'hui `default-allow-ssh` laisse le port 22 ouvert à tout Internet. Avec 
 
 Respecter cet ordre, sinon on se verrouille dehors. Les étapes 1 à 4 s'ajoutent sans rien casser ; seule la 5 ferme l'accès actuel.
 
-1. Activer l'API :
-
-```powershell
-gcloud services enable iap.googleapis.com
-```
-
-2. Autoriser les adresses de Google sur le port 22 :
-
-```powershell
-gcloud compute firewall-rules create chatisen-ssh-iap --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=chatisen
-```
+1. et 2. Activer l'API IAP et autoriser les adresses de Google sur le port 22 : fait par Terraform ([`terraform/network.tf`](terraform/network.tf), ressources `google_project_service.iap` et `google_compute_firewall.ssh_iap`), plus à la main.
 
 3. Sha ou Tom donnent à chaque membre le rôle « Utilisateur de tunnel sécurisé par IAP » (`roles/iap.tunnelResourceAccessor`), un compte à la fois :
 
@@ -124,11 +115,7 @@ gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE
 gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
 ```
 
-5. Seulement quand tout le monde a réussi, fermer l'accès ouvert à tout Internet :
-
-```powershell
-gcloud compute firewall-rules delete default-allow-ssh
-```
+5. Seulement quand tout le monde a réussi, fermer l'accès ouvert à tout Internet : une PR retire `google_compute_firewall.default_ssh` de `terraform/network.tf` (et son bloc `import`), puis `terraform plan` doit annoncer exactement `1 to destroy` avant `apply`. Ne plus supprimer la règle à la main : Terraform la recréerait.
 
 Puis prouver la fermeture depuis un réseau qui laisse sortir le port 22 (la section ci-dessous distingue « filtré » et « refusé »), et consigner la sortie dans `docs/reports/`. Ensuite, ajouter `--tunnel-through-iap` aux commandes `gcloud compute ssh` de ce document. Le bouton « SSH » de la console devrait continuer de fonctionner, car il se connecte depuis des adresses de Google : à vérifier après la fermeture.
 

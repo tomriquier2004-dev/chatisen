@@ -1,6 +1,6 @@
 # Terraform : ressources GCP de ChatISEN
 
-Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (statut « proposé »). Cette première version **reprend sans les modifier** les ressources créées à la main le 23 novembre 2026 ([ADR-0012](../../docs/adr/0012-deploiement-et-hebergement.md)) : VM `chatisen-prod`, IP `chatisen-ip`, règles `chatisen-web` et `chatisen-turn`, calendrier `arret-nuit-minuit`. Cloud SQL, la VM TURN, les comptes de service et le load balancer viendront dans des PR suivantes.
+Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (statut « proposé »). Cette première version **reprend sans les modifier** les ressources créées à la main le 23 novembre 2026 ([ADR-0012](../../docs/adr/0012-deploiement-et-hebergement.md)) : VM `chatisen-prod`, IP `chatisen-ip`, règles `chatisen-web` et `chatisen-turn`, calendrier `arret-nuit-minuit`. Elle décrit aussi les règles `default-*` du réseau, le compte de service `chatisen-vm`, la règle `chatisen-ssh-iap` et l'API IAP (`network.tf`, `iam.tf`). Cloud SQL, la VM TURN, les rôles des comptes de service et le load balancer viendront dans des PR suivantes.
 
 **État (26/11/2026)** : `terraform plan` contre le projet affiche « 5 to import, 0 to add, 0 to change, 0 to destroy » ; `compute.tf` décrit les ressources existantes.
 
@@ -18,6 +18,9 @@ Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (s
 | Lire les ressources, `import`, `plan` | `roles/compute.viewer` |
 | Créer et utiliser le bucket d'état | `roles/storage.admin` (ou `roles/storage.objectAdmin` sur le seul bucket, s'il est créé par un administrateur) |
 | Projet de quota des identifiants, activation des APIs | `roles/serviceusage.serviceUsageAdmin` |
+| Créer et modifier les règles de pare-feu | `roles/compute.securityAdmin` |
+| Lire le compte de service de la VM (import) | `roles/iam.serviceAccountViewer` |
+| Se connecter par le tunnel IAP | `roles/iap.tunnelResourceAccessor` |
 
 Ils sont accordés par un administrateur IAM du projet (console : IAM et administration, IAM, Accorder l'accès).
 

@@ -69,11 +69,7 @@ resource "google_compute_firewall" "turn" {
     ports    = ["49152-49252"]
   }
 
-  # Ouvert sans service (ADR-0016) : à fermer dans une PR séparée, pas pendant l'import.
-  allow {
-    protocol = "tcp"
-    ports    = ["5349"]
-  }
+  # TCP 5349 (TURN sur TLS) retiré : aucun service n'y écoute (ADR-0016).
 }
 
 resource "google_compute_instance" "web" {
@@ -117,7 +113,7 @@ resource "google_compute_instance" "web" {
   }
 
   service_account {
-    email  = "chatisen-vm@${var.project_id}.iam.gserviceaccount.com"
+    email  = google_service_account.vm.email
     scopes = []
   }
 

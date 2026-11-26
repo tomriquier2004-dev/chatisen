@@ -26,3 +26,27 @@ import {
   to = google_compute_resource_policy.nightly_stop
   id = "projects/${var.project_id}/regions/${var.region}/resourcePolicies/arret-nuit-minuit"
 }
+
+# Règles créées par Google avec le réseau `default`, et compte de service de la VM (inventaire du 26/11/2026,
+# docs/reports/inventaire-gcp-2026-11-26.md). `default-allow-ssh` est importée pour pouvoir la supprimer
+# par une PR, une fois le SSH par IAP testé par chaque membre.
+
+import {
+  to = google_compute_firewall.default_ssh
+  id = "projects/${var.project_id}/global/firewalls/default-allow-ssh"
+}
+
+import {
+  to = google_compute_firewall.default_internal
+  id = "projects/${var.project_id}/global/firewalls/default-allow-internal"
+}
+
+import {
+  to = google_compute_firewall.default_icmp
+  id = "projects/${var.project_id}/global/firewalls/default-allow-icmp"
+}
+
+import {
+  to = google_service_account.vm
+  id = "projects/${var.project_id}/serviceAccounts/chatisen-vm@${var.project_id}.iam.gserviceaccount.com"
+}
