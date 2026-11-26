@@ -54,8 +54,8 @@ Tarifs relevés : règles de transfert, les cinq premières, 0,025 $ par heure (
 ## À vérifier avant de passer à « accepté »
 
 - [ ] Un appel relayé par TURN passe, coturn étant derrière le load balancer.
-- [ ] Emplacement de l'état Terraform décidé et documenté.
-- [ ] Ressources existantes importées, `terraform plan` sans changement.
+- [x] Emplacement de l'état Terraform décidé et documenté : bucket Cloud Storage versionné, nom passé à `terraform init` ([`infra/terraform/README.md`](../../infra/terraform/README.md)).
+- [x] Ressources existantes importées, `terraform plan` sans changement : « 5 to import, 0 to add, 0 to change, 0 to destroy » le 26/11/2026 (#160).
 - [ ] Bascule de l'IP testée, durée de l'interruption mesurée.
 - [ ] Coût du load balancer relevé dans le rapport de facturation et joint au chapitre 12.
 - [ ] Règle d'extinction de `infra/README.md` corrigée au moment où le load balancer est créé.
