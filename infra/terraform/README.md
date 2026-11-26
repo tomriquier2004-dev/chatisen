@@ -21,6 +21,7 @@ Décision : [ADR-0018](../../docs/adr/0018-terraform-et-load-balancer-gcp.md) (s
 | Créer et modifier les règles de pare-feu | `roles/compute.securityAdmin` |
 | Lire le compte de service de la VM (import) | `roles/iam.serviceAccountViewer` |
 | Créer Cloud SQL et son accès privé (`sql.tf`) | `roles/cloudsql.admin`, `roles/compute.networkAdmin`, `roles/servicenetworking.networksAdmin` |
+| Donner un rôle au compte de la VM (`iam.tf`) | `roles/resourcemanager.projectIamAdmin` |
 | Se connecter par le tunnel IAP | `roles/iap.tunnelResourceAccessor`, `roles/compute.osLogin`, et `roles/iam.serviceAccountUser` sur le compte `chatisen-vm` |
 
 Ils sont accordés par un administrateur IAM du projet (console : IAM et administration, IAM, Accorder l'accès).
@@ -53,18 +54,24 @@ Ils sont accordés par un administrateur IAM du projet (console : IAM et adminis
 
 ## Cloud SQL (`sql.tf`)
 
-- Instance `chatisen-pg`, PostgreSQL 16, `db-f1-micro`, zonale en `europe-west1-b`, **IP privée seulement** (accès privé aux services sur le réseau `default`), TLS obligatoire (`ENCRYPTED_ONLY`), sauvegarde quotidienne à 02:00 UTC gardée 7 jours, `deletion_protection`.
+- Instance `chatisen-pg`, PostgreSQL 16, `db-f1-micro`, zonale en `europe-west1-b`, **IP privée seulement** (accès privé aux services sur le réseau `default`), TLS avec certificat client obligatoire (`TRUSTED_CLIENT_CERTIFICATE_REQUIRED`), sauvegarde quotidienne à 02:00 UTC gardée 7 jours, `deletion_protection`.
 - Mot de passe de l'utilisateur `chatisen` : jamais dans un fichier. Il passe par la variable d'environnement `TF_VAR_db_password` ; c'est un attribut *write-only*, absent du plan et de l'état. Terraform l'exige à chaque `plan` et `apply` (sinon : « all of password_wo,password_wo_version must be specified »). Il n'est envoyé à GCP qu'à la création et quand `db_password_version` change : ensuite, une valeur quelconque suffit pour un `plan`. Pour le changer : nouvelle valeur et `db_password_version` + 1.
   ```powershell
   $env:TF_VAR_db_password = -join ((48..57 + 97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
   ```
   Le même mot de passe va ensuite dans le `.env` de la VM (`DATABASE_URL`), pas ailleurs.
 - Coût : l'instance est facturée tant qu'elle tourne, même sans trafic. Pour l'arrêter : `terraform apply -var="sql_activation_policy=NEVER"` ; pour la relancer, `ALWAYS`. Le stockage reste facturé à l'arrêt.
-- Vérifier depuis la VM (tunnel IAP) que la connexion est chiffrée :
+- Connexion : uniquement par le [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy), qui s'authentifie avec le compte de service `chatisen-vm` (rôle `roles/cloudsql.client`, `iam.tf`) et chiffre la liaison avec un certificat client éphémère. Une connexion directe, même en TLS, est refusée.
+- Vérifier depuis la VM (tunnel IAP) :
   ```bash
-  sudo docker run --rm -it postgres:16 psql "host=<IP_PRIVEE> user=chatisen dbname=chatisen sslmode=require" -c "select ssl from pg_stat_ssl where pid = pg_backend_pid();"
+  # 1. Connexion directe sans certificat client : doit être refusée.
+  sudo docker run --rm -it postgres:16 psql "host=<IP_PRIVEE> user=chatisen dbname=chatisen sslmode=require" -c "select 1;"
+  # 2. Par le proxy : doit répondre 1.
+  sudo docker run -d --rm --name sql-proxy --network host gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1 --private-ip <ID_PROJET>:europe-west1:chatisen-pg
+  sudo docker run --rm -it --network host postgres:16 psql "host=127.0.0.1 user=chatisen dbname=chatisen sslmode=disable" -c "select 1;"
+  sudo docker stop sql-proxy
   ```
-  `<IP_PRIVEE>` : `terraform output sql_private_ip`. Résultat attendu : `t`.
+  `<IP_PRIVEE>` : `terraform output sql_private_ip`. `sslmode=disable` ne concerne que le trajet local vers le proxy ; le proxy chiffre la liaison vers Cloud SQL.
 
 ## Vérifications
 

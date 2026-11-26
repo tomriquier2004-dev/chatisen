@@ -8,3 +8,10 @@ resource "google_service_account" "vm" {
     ignore_changes = [display_name, description]
   }
 }
+
+# Connexion de la VM à Cloud SQL par le Cloud SQL Auth Proxy (ADR-0021).
+resource "google_project_iam_member" "vm_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.vm.email}"
+}

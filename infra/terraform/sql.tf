@@ -1,4 +1,4 @@
-# Cloud SQL pour PostgreSQL (ADR-0017) : IP privée seulement, TLS exigé, sauvegardes automatiques.
+# Cloud SQL pour PostgreSQL (ADR-0017) : IP privée seulement, TLS avec certificat client, sauvegardes automatiques.
 # Coût : facturé tant que l'instance tourne, VM éteinte ou non. Pour l'arrêter hors séance :
 #   terraform apply -var="sql_activation_policy=NEVER"
 
@@ -56,7 +56,8 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = data.google_compute_network.default.id
-      ssl_mode        = "ENCRYPTED_ONLY"
+      # TLS avec certificat client : la VM passe par le Cloud SQL Auth Proxy, qui gère des certificats éphémères.
+      ssl_mode = "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"
     }
 
     backup_configuration {
