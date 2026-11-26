@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.5.0...v0.6.0) (2026-11-26)
+
+
+### Fonctionnalités
+
+* **infra:** add Terraform skeleton importing existing GCP resources ([#161](https://github.com/tomriquier2004-dev/chatisen/issues/161)) ([64a3be8](https://github.com/tomriquier2004-dev/chatisen/commit/64a3be876b9634a456f9c6ef51125793575232a9))
+* **infra:** link the API to the observability network on the VM ([#167](https://github.com/tomriquier2004-dev/chatisen/issues/167)) ([2605a70](https://github.com/tomriquier2004-dev/chatisen/commit/2605a70c7918acd076b29af6f0d6289f65fc4613))
+* **infra:** manage default firewall rules, IAP SSH and the VM service account ([#171](https://github.com/tomriquier2004-dev/chatisen/issues/171)) ([36a3f5a](https://github.com/tomriquier2004-dev/chatisen/commit/36a3f5a25d6189a0cd5acdc9868b3f0b5c898cfa))
+
+
+### Corrections
+
+* **ci:** exempt Dependabot PRs from PR hygiene by author instead of actor ([#139](https://github.com/tomriquier2004-dev/chatisen/issues/139)) ([ad70134](https://github.com/tomriquier2004-dev/chatisen/commit/ad7013422681ea8c9ee67077a9a508c9d48f85e1)), closes [#138](https://github.com/tomriquier2004-dev/chatisen/issues/138)
+* **infra:** pass the TURN secret and URLs to the API in the production Compose ([#159](https://github.com/tomriquier2004-dev/chatisen/issues/159)) ([5abdda2](https://github.com/tomriquier2004-dev/chatisen/commit/5abdda23dd9acdc95e2bc79b8a733b2ec3c0548a))
+
+
+### Documentation
+
+* **adr:** record that the J1 images are published and public ([#155](https://github.com/tomriquier2004-dev/chatisen/issues/155)) ([86a314f](https://github.com/tomriquier2004-dev/chatisen/commit/86a314f348e7109551f6ca263693fc08c472aabf))
+* **architecture:** record Cloud NAT as the outbound path in the validated target view ([#145](https://github.com/tomriquier2004-dev/chatisen/issues/145)) ([198bcd6](https://github.com/tomriquier2004-dev/chatisen/commit/198bcd659b3f92a4e9daf7a6856daf2fde2e997d))
+* **reports:** inventory the GCP resources created by hand ([#165](https://github.com/tomriquier2004-dev/chatisen/issues/165)) ([51feb0b](https://github.com/tomriquier2004-dev/chatisen/commit/51feb0b21f03da9ea69bd33f0bf00b742816ee91))
+* **reports:** record the J1 deployment proofs and update ADR-0022 and the supervisor notes ([#163](https://github.com/tomriquier2004-dev/chatisen/issues/163)) ([590b06d](https://github.com/tomriquier2004-dev/chatisen/commit/590b06d94c5d8c38ce7242cb912ea7683e5c375d))
+* **reports:** record the SSH via IAP, closed ports and rollback proofs ([#169](https://github.com/tomriquier2004-dev/chatisen/issues/169)) ([d7a8430](https://github.com/tomriquier2004-dev/chatisen/commit/d7a84305bd0ddf1e7d4966e2dd1dfced96bb610f))
+
 ## [0.5.0](https://github.com/tomriquier2004-dev/chatisen/compare/v0.4.0...v0.5.0) (2026-11-26)
 
 
