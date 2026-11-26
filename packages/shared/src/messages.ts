@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { ErrorResponse } from "./errors";
 import { Uuid } from "./ids";
+import type { CallClientToServerEvents, CallServerToClientEvents } from "./calls";
 
 /** Corps d'un message : 1 à 4 000 caractères (même borne que la contrainte en base). */
 export const MessageBody = Type.String({ minLength: 1, maxLength: 4000 });
@@ -99,7 +100,7 @@ export const MemberUpdatedEvent = Type.Object(
 export type MemberUpdatedEvent = Static<typeof MemberUpdatedEvent>;
 
 /** Événements émis par le serveur (architecture § 5.2). */
-export interface ServerToClientEvents {
+export interface ServerToClientEvents extends CallServerToClientEvents {
   "message:new": (message: Message) => void;
   "conversation:member-added": (event: MemberAddedEvent) => void;
   "conversation:member-removed": (event: MemberRemovedEvent) => void;
@@ -107,7 +108,7 @@ export interface ServerToClientEvents {
 }
 
 /** Événements émis par le client, avec leur ack. */
-export interface ClientToServerEvents {
+export interface ClientToServerEvents extends CallClientToServerEvents {
   "message:send": (payload: MessageSendPayload, ack: (res: Ack<Message>) => void) => void;
   "conversation:sync": (payload: ConversationSyncPayload, ack: (res: Ack<Message[]>) => void) => void;
   "message:read": (payload: MessageReadPayload, ack: (res: Ack<{ lastReadSeq: number }>) => void) => void;

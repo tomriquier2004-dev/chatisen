@@ -46,6 +46,8 @@ jobs:
     env:
       E2E_DATABASE_URL: postgres://chatisen:chatisen-ci@127.0.0.1:5432/chatisen
       TEST_REDIS_URL: redis://127.0.0.1:6379
+      TURN_SHARED_SECRET: chatisen-e2e-shared-secret-0123456789abcdef
+      TURN_URLS: turn:127.0.0.1:3478?transport=udp
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,8 +61,31 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Navigateur Chromium
         run: pnpm --filter @chatisen/web exec playwright install --with-deps chromium
+      - name: Démarrer coturn pour les appels WebRTC
+        run: |
+          docker run -d --network host --name chatisen-coturn \
+            coturn/coturn:4.6.2 \
+            -n --log-file=stdout --fingerprint --use-auth-secret \
+            --static-auth-secret=chatisen-e2e-shared-secret-0123456789abcdef \
+            --realm=chatisen.test --listening-port=3478 --listening-ip=127.0.0.1 \
+            --relay-ip=127.0.0.1 --external-ip=127.0.0.1 --allow-loopback-peers \
+            --min-port=49160 --max-port=49200 --no-tls --no-dtls --no-cli
+          for i in $(seq 1 15); do
+            if docker logs chatisen-coturn 2>&1 | grep -q "Listener address"; then exit 0; fi
+            sleep 1
+          done
+          docker logs chatisen-coturn
+          exit 1
       - name: Tests e2e
         run: pnpm --filter @chatisen/web test:e2e
+      - name: Captures clair / sombre de l'interface d'appel
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: call-ui-screenshots
+          path: apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Rapport Playwright (en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

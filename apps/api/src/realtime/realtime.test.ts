@@ -1,7 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Value } from "@sinclair/typebox/value";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Message, type Ack, type ConversationView } from "@chatisen/shared";
+import {
+  Message,
+  type Ack,
+  type ConversationView,
+  type CallAck,
+  type CallInviteAck,
+  type CallIncomingEvent,
+  type CallAcceptedEvent,
+  type CallEndedEvent,
+  type RtcDescriptionEvent,
+  type RtcIceCandidateEvent,
+} from "@chatisen/shared";
 import { loadConfig, type Config } from "../config";
 import { createTestDb, type TestDb } from "../test/db";
 import { registerUser, type RegisteredUser } from "../test/app";
@@ -16,7 +27,7 @@ const sockets: ClientSocket[] = [];
 
 beforeAll(async () => {
   testDb = await createTestDb();
-  config = loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent", RATE_LIMIT_ENABLED: "false", JWT_SECRET: randomBytes(48).toString("base64") });
+  config = loadConfig({ NODE_ENV: "test", LOG_LEVEL: "silent", RATE_LIMIT_ENABLED: "false", JWT_SECRET: randomBytes(48).toString("base64"), CALL_RING_TIMEOUT_SECONDS: "5", CALL_DISCONNECT_GRACE_SECONDS: "3" });
   a = await startInstance(config, { db: testDb.db });
   b = await startInstance(config, { db: testDb.db });
 });
@@ -39,6 +50,17 @@ async function open(instance: Instance, user: RegisteredUser): Promise<ClientSoc
 
 function send(socket: ClientSocket, conversationId: string, body: string, clientMsgId = randomUUID()) {
   return socket.timeout(2000).emitWithAck("message:send", { conversationId, clientMsgId, body }) as Promise<Ack<Message>>;
+}
+
+async function privateOf(user: RegisteredUser, other: RegisteredUser): Promise<ConversationView> {
+  const res = await a.app.inject({
+    method: "POST",
+    url: "/api/v1/conversations",
+    headers: { authorization: `Bearer ${user.accessToken}` },
+    payload: { type: "private", userId: other.user.id },
+  });
+  expect(res.statusCode).toBe(201);
+  return res.json() as ConversationView;
 }
 
 async function groupOf(owner: RegisteredUser, members: RegisteredUser[]): Promise<ConversationView> {
@@ -275,5 +297,161 @@ describe("/health/ready", () => {
   it("rapporte Redis quand l'adapter est actif", async () => {
     const res = await a.app.inject({ method: "GET", url: "/api/v1/health/ready" });
     expect(res.json()).toEqual({ status: "ready", checks: { postgres: "up", redis: "up" } });
+  });
+});
+
+
+describe("appels 1-1 et signalisation WebRTC", () => {
+  it("établit un appel audio, relaie SDP/ICE uniquement entre participants et termine proprement", async () => {
+    const alice = await registerUser(a.app, "call-alice");
+    const bob = await registerUser(a.app, "call-bob");
+    const conv = await privateOf(alice, bob);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(b, bob);
+
+    const incoming = nextEvent(bobSocket, "call:incoming");
+    const invite = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(invite.ok).toBe(true);
+    if (!invite.ok) return;
+    const callId = invite.data.callId;
+    expect(await incoming).toMatchObject({ callId, conversationId: conv.id, from: alice.user.id, media: "audio" } satisfies Partial<CallIncomingEvent>);
+
+    const accepted = nextEvent(aliceSocket, "call:accepted");
+    const accept = (await bobSocket.timeout(2000).emitWithAck("call:accept", { callId })) as CallAck<{ callId: string }>;
+    expect(accept).toEqual({ ok: true, data: { callId } });
+    expect(await accepted).toEqual({ callId, userId: bob.user.id } satisfies CallAcceptedEvent);
+
+    const cameraState = nextEvent(bobSocket, "call:media-state");
+    const cameraAck = (await aliceSocket.timeout(2000).emitWithAck("call:media-state", {
+      callId, to: bob.user.id, cameraEnabled: false,
+    })) as CallAck<{ relayed: true }>;
+    expect(cameraAck.ok).toBe(true);
+    expect(await cameraState).toEqual({ callId, from: alice.user.id, cameraEnabled: false });
+
+    const offer = nextEvent(bobSocket, "rtc:offer");
+    const offerAck = (await aliceSocket.timeout(2000).emitWithAck("rtc:offer", { callId, to: bob.user.id, sdp: "v=0" })) as CallAck<{ relayed: true }>;
+    expect(offerAck).toEqual({ ok: true, data: { relayed: true } });
+    expect(await offer).toEqual({ callId, from: alice.user.id, sdp: "v=0" } satisfies RtcDescriptionEvent);
+
+    const answer = nextEvent(aliceSocket, "rtc:answer");
+    const answerAck = (await bobSocket.timeout(2000).emitWithAck("rtc:answer", { callId, to: alice.user.id, sdp: "v=0-answer" })) as CallAck<{ relayed: true }>;
+    expect(answerAck.ok).toBe(true);
+    expect(await answer).toEqual({ callId, from: bob.user.id, sdp: "v=0-answer" } satisfies RtcDescriptionEvent);
+
+    const candidate = nextEvent(bobSocket, "rtc:ice-candidate");
+    const candidateAck = (await aliceSocket.timeout(2000).emitWithAck("rtc:ice-candidate", {
+      callId, to: bob.user.id, candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
+    })) as CallAck<{ relayed: true }>;
+    expect(candidateAck.ok).toBe(true);
+    expect(await candidate).toEqual({
+      callId, from: alice.user.id, candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
+    } satisfies RtcIceCandidateEvent);
+
+    const endedA = nextEvent(aliceSocket, "call:ended");
+    const endedB = nextEvent(bobSocket, "call:ended");
+    const hangup = (await bobSocket.timeout(2000).emitWithAck("call:hangup", { callId })) as CallAck<{ callId: string }>;
+    expect(hangup.ok).toBe(true);
+    expect(await endedA).toEqual({ callId, reason: "hangup" } satisfies CallEndedEvent);
+    expect(await endedB).toEqual({ callId, reason: "hangup" } satisfies CallEndedEvent);
+
+    const call = await testDb.db.selectFrom("calls").select(["ended_at", "end_reason"]).where("id", "=", callId).executeTakeFirstOrThrow();
+    expect(call.ended_at).not.toBeNull();
+    expect(call.end_reason).toBe("hangup");
+    const participants = await testDb.db.selectFrom("call_participants").select(["user_id", "left_at"]).where("call_id", "=", callId).execute();
+    expect(participants).toHaveLength(2);
+    expect(participants.every((p) => p.left_at !== null)).toBe(true);
+  });
+
+  it("refuse un appel, termine avec rejected et empêche une seconde invitation pendant un appel actif", async () => {
+    const alice = await registerUser(a.app, "call-alice");
+    const bob = await registerUser(a.app, "call-bob");
+    const carol = await registerUser(a.app, "call-carol");
+    const ab = await privateOf(alice, bob);
+    const bc = await privateOf(bob, carol);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(b, bob);
+    const carolSocket = await open(b, carol);
+
+    const incoming = nextEvent(bobSocket, "call:incoming");
+    const invite = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: ab.id, media: "video" })) as CallAck<CallInviteAck>;
+    expect(invite.ok).toBe(true);
+    if (!invite.ok) return;
+    await incoming;
+    const rejected = nextEvent(aliceSocket, "call:ended");
+    const reject = (await bobSocket.timeout(2000).emitWithAck("call:reject", { callId: invite.data.callId })) as CallAck<{ callId: string }>;
+    expect(reject.ok).toBe(true);
+    expect(await rejected).toEqual({ callId: invite.data.callId, reason: "rejected" });
+
+    const incomingCarol = nextEvent(carolSocket, "call:incoming");
+    const bobInvite = (await bobSocket.timeout(2000).emitWithAck("call:invite", { conversationId: bc.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(bobInvite.ok).toBe(true);
+    if (!bobInvite.ok) return;
+    await incomingCarol;
+    const bobAccepted = nextEvent(bobSocket, "call:accepted");
+    await carolSocket.timeout(2000).emitWithAck("call:accept", { callId: bobInvite.data.callId });
+    await bobAccepted;
+
+    const noIncoming = noEvent(bobSocket, "call:incoming");
+    const busyEnded = nextEvent(aliceSocket, "call:ended");
+    const busy = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: ab.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(busy.ok).toBe(true);
+    if (!busy.ok) return;
+    expect(await busyEnded).toEqual({ callId: busy.data.callId, reason: "busy" });
+    expect(await noIncoming).toBe(true);
+  });
+
+  it("expire une sonnerie sans réponse et refuse les relais vers un tiers", async () => {
+    const alice = await registerUser(a.app, "call-alice");
+    const bob = await registerUser(a.app, "call-bob");
+    const outsider = await registerUser(a.app, "call-outsider");
+    const conv = await privateOf(alice, bob);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(b, bob);
+    const outsiderSocket = await open(b, outsider);
+
+    const incoming = nextEvent(bobSocket, "call:incoming");
+    const invite = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(invite.ok).toBe(true);
+    if (!invite.ok) return;
+    await incoming;
+    const ended = await nextEvent(aliceSocket, "call:ended", 7000);
+    expect(ended).toEqual({ callId: invite.data.callId, reason: "timeout" });
+
+    const notMember = (await outsiderSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(notMember).toMatchObject({ ok: false, error: { code: "CONVERSATION_FORBIDDEN" } });
+
+    const incoming2 = nextEvent(bobSocket, "call:incoming");
+    const invite2 = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(invite2.ok).toBe(true);
+    if (!invite2.ok) return;
+    await incoming2;
+    const accepted = nextEvent(aliceSocket, "call:accepted");
+    await bobSocket.timeout(2000).emitWithAck("call:accept", { callId: invite2.data.callId });
+    await accepted;
+    const noOffer = noEvent(outsiderSocket, "rtc:offer");
+    const forbiddenRelay = (await aliceSocket.timeout(2000).emitWithAck("rtc:offer", {
+      callId: invite2.data.callId, to: outsider.user.id, sdp: "v=0",
+    })) as CallAck<{ relayed: true }>;
+    expect(forbiddenRelay).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    expect(await noOffer).toBe(true);
+  }, 15_000);
+
+  it("termine l'appel si un participant reste déconnecté au-delà du délai de grâce", async () => {
+    const alice = await registerUser(a.app, "call-alice");
+    const bob = await registerUser(a.app, "call-bob");
+    const conv = await privateOf(alice, bob);
+    const aliceSocket = await open(a, alice);
+    const bobSocket = await open(b, bob);
+    const incoming = nextEvent(bobSocket, "call:incoming");
+    const invite = (await aliceSocket.timeout(2000).emitWithAck("call:invite", { conversationId: conv.id, media: "audio" })) as CallAck<CallInviteAck>;
+    expect(invite.ok).toBe(true);
+    if (!invite.ok) return;
+    await incoming;
+    const accepted = nextEvent(aliceSocket, "call:accepted");
+    await bobSocket.timeout(2000).emitWithAck("call:accept", { callId: invite.data.callId });
+    await accepted;
+    const ended = nextEvent(aliceSocket, "call:ended", 6000);
+    bobSocket.close();
+    expect(await ended).toEqual({ callId: invite.data.callId, reason: "disconnected" });
   });
 });

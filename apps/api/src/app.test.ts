@@ -61,3 +61,16 @@ describe("format d'erreur", () => {
     expect(body.error.requestId).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
+
+
+describe("GET /metrics", () => {
+  it("expose les métriques d'appel au format Prometheus sans authentification publique", async () => {
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/plain");
+    expect(res.body).toContain("# TYPE chatisen_calls_started_total counter");
+    expect(res.body).toContain("# TYPE chatisen_call_quality_samples_total counter");
+    expect(res.body).toContain("# TYPE chatisen_calls_by_ice_candidate_type gauge");
+    expect(res.body).toContain("chatisen_call_duration_seconds_count");
+  });
+});
