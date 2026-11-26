@@ -65,6 +65,6 @@ Preuves de la séance du 25/11/2026 : [`docs/reports/ports-tls-2026-11-25.md`](.
 - [x] 3389, 5432, 6379, 3000 et 9090 injoignables (contrôle positif : `github.com:22` répond depuis le même poste ; rapport `ssh-iap-et-rollback-2026-11-26`), **depuis un réseau qui laisse sortir ces ports** : un réseau local restrictif donne des délais dépassés qui ne prouvent rien sur le pare-feu GCP.
 - [x] Nom `dc-ops.isen.fedyna.fr` redirigé par le prof vers l'IP de la VM (résolution vérifiée par `nslookup` via 8.8.8.8 et par `curl`).
 - [x] Certificat valide obtenu pour ce nom (accepté sans `-k` par `curl`).
-- [x] Émetteur du certificat relevé : Let's Encrypt (rapport du 2026-11-26) (Caddy peut utiliser Let's Encrypt ou ZeroSSL, l'énoncé « Let's Encrypt » n'est donc pas prouvé).
+- [x] Émetteur du certificat relevé : Let's Encrypt, `CN=YE2` (rapport du 2026-11-26 ; Caddy peut aussi utiliser ZeroSSL, ce n'est pas le cas ici).
 - [ ] coturn déployé et TURN testé depuis le réseau de la salle de démo.
 - [x] `architecture.md` mis à jour (§§ 6.4, 8.1 et 8.3, PR #126 et #130).
