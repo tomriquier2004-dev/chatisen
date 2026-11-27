@@ -7,6 +7,21 @@
 
 ---
 
+## Lecture rapide : correspondance avec le document demandé par l'encadrant
+
+| Demande de l'encadrant | Où dans ce document | État |
+| --- | --- | --- |
+| Diagramme de classes du domaine | [§ 4.1](#41-diagramme-de-classes-du-domaine) | rédigé à partir du code |
+| Schéma d'architecture générale | [§ 1](#1-vue-densemble) et [§ 2](#2-composants) | rédigé |
+| Découpage en micro-services ou monolithe modulaire, défini et justifié | [§ 13.1](#131-décision-et-justification), [ADR-0023](adr/0023-monolithe-modulaire-et-architecture-hexagonale.md) | rédigé, ADR « proposé », à relire par le back |
+| Pour chaque module : interfaces d'exploitation (OpenAPI 3.0) | [§ 13.4](#134-interfaces-openapi-30-par-module), [`docs/api/openapi/`](api/openapi/) | une spécification par module et une complète, **générées du code** et validées ; événements Socket.IO en [§ 5.2](#52-événements-socketio) |
+| Pour chaque module : décomposition hexagonale | [§ 13.3](#133-décomposition-hexagonale-par-module) | état actuel et cible, un diagramme par module |
+| Pour chaque module : interfaces avec les autres modules | [§ 13.2](#132-interfaces-entre-modules) | rédigé, avec les écarts constatés |
+| Diagramme de déploiement | [§ 8.3](#83-flux-réseau-frontières-de-confiance-vues-j1-et-cible) | rédigé (vues J1 et cible) |
+| MCD des bases de données | [§ 4.2](#42-modèle-conceptuel-de-données-mcd) ; modèle physique en [§ 4.3](#43-modèle-relationnel-tables-postgresql) | rédigé en formalisme Merise ; à valider avec l'encadrant |
+
+---
+
 ## 1. Vue d'ensemble
 
 ChatISEN est une application web composée d'un **client navigateur** (SPA Preact), d'une **API Fastify** qui sert à la fois le REST et le temps réel (Socket.IO), d'une **base PostgreSQL** pour les données durables, de **Redis** pour l'état partagé entre instances, et d'un serveur **coturn** (STUN/TURN) pour que les flux voix/vidéo WebRTC traversent les NAT.
@@ -104,6 +119,212 @@ Règle : **`apps/web` et `apps/api` ne dépendent jamais l'un de l'autre**, uniq
 
 ## 4. Modèle de données
 
+### 4.1 Diagramme de classes du domaine
+
+Le domaine de ChatISEN tient en trois groupes : l'**identité** (utilisateurs, sessions, identités externes), la **messagerie** (conversations, membres, messages) et les **appels** (appels, participants, mesures de qualité). Le diagramme est établi à partir des types de `apps/api/src/db/schema.ts` et des règles des services ; les opérations sont les comportements portés aujourd'hui par les services de chaque module (§ 13). Les versions de présentation de tous les diagrammes de ce document (classes, MCD, hexagonal par module, architecture) sont dans [`docs/diagrams/chatisen-architecture.drawio`](diagrams/chatisen-architecture.drawio) (une page par diagramme, à ouvrir avec draw.io).
+
+Les trois groupes sont dessinés séparément pour rester lisibles. `User` est répété comme référence dans chaque groupe.
+
+**Identité**
+
+```mermaid
+classDiagram
+    direction LR
+    class User {
+        +UUID id
+        +String username
+        +String email
+        +String passwordHash
+        +String displayName
+        +Date createdAt
+        +authenticate(password) bool
+    }
+    class Session {
+        +UUID id
+        +String refreshTokenHash
+        +UUID familyId
+        +Date expiresAt
+        +Date revokedAt
+        +rotate() Session
+        +revoke()
+    }
+    class UserIdentity {
+        +String provider
+        +String subject
+        +Date createdAt
+    }
+    class TurnCredentials {
+        <<value object>>
+        +String username
+        +String credential
+        +List urls
+        +int ttlSeconds
+    }
+    User "1" --> "0..*" Session : possède
+    User "1" --> "0..*" UserIdentity : est lié à
+    User ..> TurnCredentials : obtient
+```
+
+**Messagerie**
+
+```mermaid
+classDiagram
+    direction LR
+    class Conversation {
+        +UUID id
+        +ConversationType type
+        +String title
+        +String privateKey
+        +int lastSeq
+        +Date createdAt
+        +addMember(actor, user, role)
+        +changeRole(actor, user, role)
+        +removeMember(actor, user)
+        +nextSeq() int
+    }
+    class ConversationMember {
+        +MemberRole role
+        +int lastReadSeq
+        +Date joinedAt
+        +markRead(seq)
+    }
+    class Message {
+        +UUID id
+        +int seq
+        +UUID clientMsgId
+        +String body
+        +Date createdAt
+    }
+    class User
+    class ConversationType {
+        <<enumeration>>
+        private
+        group
+    }
+    class MemberRole {
+        <<enumeration>>
+        owner
+        admin
+        member
+    }
+    Conversation "1" *-- "1..50" ConversationMember : contient
+    Conversation "1" *-- "0..*" Message : contient
+    User "1" --> "0..*" ConversationMember : participe
+    User "1" --> "0..*" Message : envoie
+    Conversation ..> ConversationType
+    ConversationMember ..> MemberRole
+```
+
+**Appels**
+
+```mermaid
+classDiagram
+    direction LR
+    class Call {
+        +UUID id
+        +CallMedia media
+        +Date startedAt
+        +Date endedAt
+        +CallEndReason endReason
+        +accept(user)
+        +reject(user)
+        +hangup(user)
+        +expireIfRinging()
+    }
+    class CallParticipant {
+        +Date joinedAt
+        +Date leftAt
+    }
+    class CallQualitySample {
+        +Date ts
+        +float rttMs
+        +float jitterMs
+        +float packetLossPct
+        +int bitrateKbps
+        +IceCandidateType candidateType
+    }
+    class Conversation
+    class User
+    class CallMedia {
+        <<enumeration>>
+        audio
+        video
+    }
+    class CallEndReason {
+        <<enumeration>>
+        hangup
+        rejected
+        timeout
+        busy
+        removed
+        disconnected
+        failed
+    }
+    class IceCandidateType {
+        <<enumeration>>
+        host
+        srflx
+        relay
+    }
+    Conversation "1" --> "0..*" Call : héberge
+    User "1" --> "0..*" Call : initie
+    Call "1" *-- "1..2" CallParticipant : réunit
+    User "1" --> "0..*" CallParticipant : participe
+    CallParticipant "1" *-- "0..*" CallQualitySample : produit
+    Call ..> CallMedia
+    Call ..> CallEndReason
+    CallQualitySample ..> IceCandidateType
+```
+
+Règles que le diagramme ne dessine pas :
+
+- **Conversation privée** : exactement deux membres, tous deux `member`, unicité de la paire garantie par `private_key` (paire d'identifiants triée). **Groupe** : de 1 à 50 membres (`MAX_GROUP_MEMBERS`), un `owner` au minimum ; seul le propriétaire nomme un `admin` ou change un rôle ; un `admin` ne retire que des `member` ; si le dernier propriétaire part, le membre le plus ancien (admins d'abord) le devient.
+- **Message** : corps de 1 à 4 000 caractères ; `seq` croissant par conversation, `(conversation_id, client_msg_id)` unique (idempotence, [ADR-0008](adr/0008-ordre-idempotence-messages.md)) ; `last_read_seq` ne recule jamais.
+- **Appel** : réservé aux **conversations privées** (1-1) ; un appelé déjà en appel donne la fin `busy` ; une sonnerie sans réponse donne `timeout`. Seul un participant actif envoie des mesures, et l'utilisateur est déduit du jeton, jamais du corps de la requête.
+- **Compte Microsoft** : `passwordHash` vaut `NULL` et l'identité est retrouvée par `(provider, subject)` = `("microsoft", "tid:oid")` ([ADR-0020](adr/0020-connexion-microsoft-entra-id.md)).
+- **TurnCredentials** n'est pas stocké : valeur calculée par `/turn/credentials` (`username` = `expiration:userId`, `credential` = HMAC-SHA1 du secret partagé).
+
+### 4.2 Modèle conceptuel de données (MCD)
+
+Formalisme **Merise** : les rectangles sont des entités (l'identifiant est précédé de `#`), les ovales des associations, et chaque patte porte la cardinalité **(min, max)** de l'entité dans l'association. L'association « EST MEMBRE » est porteuse de propriétés (rôle, dernier numéro lu, date d'entrée), comme « PARTICIPE » (arrivée et départ d'un appel). Les identifiants techniques sont des UUID.
+
+```mermaid
+flowchart LR
+    U["UTILISATEUR<br/>#id<br/>nom d'utilisateur (unique)<br/>adresse e-mail (unique)<br/>mot de passe haché (facultatif)<br/>nom affiché<br/>date de création"]
+    SES["SESSION<br/>#id<br/>jeton de refresh haché<br/>famille de jetons<br/>expiration, révocation"]
+    IDE["IDENTITÉ EXTERNE<br/>#fournisseur, #sujet<br/>date de création"]
+    C["CONVERSATION<br/>#id<br/>type (privée, groupe)<br/>titre (groupe)<br/>clé de paire (privée)<br/>dernier numéro d'ordre<br/>date de création"]
+    M["MESSAGE<br/>#id<br/>numéro d'ordre (par conversation)<br/>identifiant client (idempotence)<br/>corps, date de création"]
+    A["APPEL<br/>#id<br/>média (audio, vidéo)<br/>début, fin, motif de fin"]
+    Q["ÉCHANTILLON DE QUALITÉ<br/>#id<br/>horodatage, RTT, gigue<br/>perte, débit<br/>type de candidat ICE"]
+
+    R1(["POSSÈDE"])
+    R2(["S'AUTHENTIFIE PAR"])
+    R3(["EST MEMBRE<br/>rôle, dernier n° lu, date d'entrée"])
+    R4(["CONTIENT"])
+    R5(["ÉCRIT"])
+    R6(["HÉBERGE"])
+    R7(["INITIE"])
+    R8(["PARTICIPE<br/>arrivée, départ"])
+    R9(["MESURE"])
+    R10(["CONCERNE"])
+
+    U ---|"0,n"| R1 ---|"1,1"| SES
+    U ---|"0,n"| R2 ---|"1,1"| IDE
+    U ---|"0,n"| R3 ---|"1,50 (privée : 2)"| C
+    C ---|"0,n"| R4 ---|"1,1"| M
+    U ---|"0,n"| R5 ---|"1,1"| M
+    C ---|"0,n"| R6 ---|"1,1"| A
+    U ---|"0,n"| R7 ---|"1,1"| A
+    U ---|"0,n"| R8 ---|"1,2"| A
+    U ---|"0,n"| R9 ---|"1,1"| Q
+    A ---|"0,n"| R10 ---|"1,1"| Q
+```
+
+Contraintes que le MCD ne porte pas (appliquées par le code ou la base) : un échantillon n'est accepté que d'un utilisateur qui **participe** à l'appel concerné (clé étrangère composite vers PARTICIPE) ; une conversation privée a exactement deux membres ; `(numéro d'ordre, conversation)` et `(identifiant client, conversation)` sont uniques. Le **MLD/MPD** qui en découle est donné ci-dessous.
+
+### 4.3 Modèle relationnel (tables PostgreSQL)
+
 ```mermaid
 erDiagram
     USERS ||--o{ SESSIONS : "possède"
@@ -144,6 +365,7 @@ erDiagram
         uuid id PK
         text type "private | group"
         text title "null si private"
+        text private_key UK "paire d'identifiants triée, conversations privées"
         bigint last_seq
         timestamptz created_at
     }
@@ -205,7 +427,7 @@ Points de conception :
 
 ## 5. Contrats d'interface
 
-Tous les schémas sont définis **une seule fois** dans `packages/shared` et importés des deux côtés. Fastify valide chaque requête et chaque réponse contre son schéma ; les handlers Socket.IO valident chaque payload entrant.
+Tous les schémas sont définis **une seule fois** dans `packages/shared` et importés des deux côtés. La spécification **OpenAPI 3.0** de chaque module est générée à partir de ces schémas et des routes réellement enregistrées ([§ 13.4](#134-interfaces-openapi-30-par-module), [`docs/api/openapi/`](api/openapi/)). Fastify valide chaque requête et chaque réponse contre son schéma ; les handlers Socket.IO valident chaque payload entrant.
 
 ### 5.1 REST (`/api/v1`)
 
@@ -218,11 +440,14 @@ Tous les schémas sont définis **une seule fois** dans `packages/shared` et imp
 | GET | `/auth/providers` | Fournisseurs de connexion activés (`microsoft: true/false`) | FR-01 |
 | GET | `/auth/microsoft/start` | Redirection vers Microsoft (PKCE, `state`, `nonce` en cookie signé) | FR-01 (ADR-0020) |
 | GET | `/auth/microsoft/callback` | Retour de Microsoft → session ChatISEN, redirection vers `/` ou `/?authError=` | FR-01, FR-04 (ADR-0020) |
-| GET | `/users/me` · PATCH `/users/me` | Profil | FR-02 |
+| GET | `/users/me` | Profil de l'utilisateur courant (la modification du profil, `PATCH /users/me`, n'est pas implémentée) | FR-02 |
 | GET | `/users?query=` | Recherche d'utilisateurs | FR-02 |
 | GET | `/conversations` | Conversations de l'utilisateur + non-lus | FR-06 |
 | POST | `/conversations` | Créer une conversation privée ou de groupe | FR-06, FR-16 |
-| POST · DELETE | `/conversations/:id/members[/:userId]` | Gérer les membres (rôle requis) | FR-03, FR-16 |
+| GET | `/conversations/:id` | Détail d'une conversation | FR-06 |
+| POST | `/conversations/:id/members` | Ajouter un membre (propriétaire ou admin) | FR-03, FR-16 |
+| PATCH | `/conversations/:id/members/:userId` | Changer le rôle d'un membre (propriétaire) | FR-16 |
+| DELETE | `/conversations/:id/members/:userId` | Retirer un membre ou quitter | FR-03, FR-16 |
 | GET | `/conversations/:id/messages?before=<seq>&limit=` | Historique paginé | FR-08 |
 | GET | `/turn/credentials` | Identifiants TURN éphémères | FR-09, FR-10 |
 | POST | `/calls/:id/quality` | Envoi groupé d'échantillons `getStats` par un participant actif (1 à 60 échantillons, 30 lots/minute/utilisateur) | FR-13, NFR-04 |
@@ -477,7 +702,7 @@ Version du 25 novembre 2026, après la review de Tom. Cette section sert à **tr
 - **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
 - **Cible** : load balancer réseau qui porte l'IP (**retenu par l'équipe**, consigne du prof), VM TURN séparée (consigne du prof, ADR-0016 à amender), base sur Cloud SQL pour PostgreSQL (**décidée**, ADR-0017), copie des sauvegardes dans un bucket Cloud Storage. Rien n'est à faire avant J1.
 
-`<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
+`<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`. Les versions de présentation des deux vues, **sans l'IP** et lisibles à l'écran, sont dans [`docs/diagrams/chatisen-architecture.drawio`](diagrams/chatisen-architecture.drawio) (pages « Infrastructure J1 » et « Infrastructure cible »).
 
 État : **existant** (en place ou dans le code) · **proposé** (décidé ou en cours, pas déployé) · **à trancher** · **faiblesse** (en place, à corriger) · **à confirmer** (contradiction entre une décision de l'équipe et le dépôt, voir plus bas) · **manquant**.
 
@@ -825,3 +1050,252 @@ Ces scénarios servent de base aux **tests de fiabilité** (arrêt volontaire de
 | [ADR-0019](adr/0019-coturn-vm-dediee.md) | Isolation de coturn sur une VM dédiée (vue cible) | proposé, à valider |
 | [ADR-0020](adr/0020-connexion-microsoft-entra-id.md) | Connexion avec un compte Microsoft (Entra ID, OIDC) | proposé, rédigé |
 | [ADR-0021](adr/0021-secrets-identites-iam.md) | Secrets : identités IAM plutôt que Secret Manager (vue cible) | proposé, rédigé |
+| [ADR-0022](adr/0022-registre-ghcr-et-deploiement-manuel-j1.md) | Registre GHCR, images taguées par SHA, scan Trivy et déploiement manuel en J1 | proposé, rédigé |
+| [ADR-0023](adr/0023-monolithe-modulaire-et-architecture-hexagonale.md) | Monolithe modulaire, puis architecture hexagonale par module | proposé, rédigé |
+
+---
+
+## 13. Découpage en modules (monolithe modulaire)
+
+### 13.1 Décision et justification
+
+L'application est un **monolithe modulaire** : un seul déploiement (le conteneur `api`), découpé en modules par domaine, puis, après le cours de l'encadrant, une architecture **hexagonale** à l'intérieur de chaque module. Les micro-services sont écartés pour ce projet. La décision complète, les options comparées et ses limites sont dans l'[ADR-0023](adr/0023-monolithe-modulaire-et-architecture-hexagonale.md) (statut : proposé).
+
+| Critère | Monolithe modulaire (retenu) | Micro-services |
+| --- | --- | --- |
+| Envoi d'un message (`seq`, appartenance, écriture) | une transaction PostgreSQL | échanges réseau et cohérence à terme |
+| Rooms Socket.IO liées à l'appartenance | un état, relayé par Redis ([§ 5.3](#53-changement-dappartenance-pendant-quun-membre-est-connecté-fr-03-fr-16-nfr-04)) | état à partager ou à répéter |
+| Pipeline, image, scan Trivy, déploiement | un seul | un par service |
+| Flux réseau à justifier et à prouver | ceux de la [§ 8.3](#83-flux-réseau-frontières-de-confiance-vues-j1-et-cible) | autant de flux internes en plus |
+| Retour arrière | une image, un commit ([ADR-0022](adr/0022-registre-ghcr-et-deploiement-manuel-j1.md)) | versions à faire correspondre |
+| Évolution vers des services | possible par les ports entre modules | déjà fait, mais coût payé dès maintenant |
+
+**Les modules** (dossier `apps/api/src/modules/`, sauf mention) :
+
+| Module | Responsabilité | Tables | Interface REST (OpenAPI) | Temps réel (Socket.IO) |
+| --- | --- | --- | --- | --- |
+| `auth` | inscription, connexion, sessions (JWT court, refresh rotatif), connexion Microsoft | `users`, `sessions`, `user_identities` | [`auth.json`](api/openapi/auth.json) | déconnexion forcée des sockets (événement `SessionEvents`) |
+| `users` | profil, recherche d'utilisateurs | `users` (lecture) | [`users.json`](api/openapi/users.json) | aucun (la présence `presence:update` de la § 5.2 n'est pas implémentée) |
+| `conversations` | conversations privées et de groupe, membres, rôles, non-lus | `conversations`, `conversation_members` | [`conversations.json`](api/openapi/conversations.json) | `conversation:member-*`, rooms `conv:*` |
+| `messages` | historique paginé, envoi, ordre, idempotence, accusés de lecture | `messages` | [`messages.json`](api/openapi/messages.json) | `message:send`, `message:new`, `conversation:sync`, `message:read` |
+| `calls` | cycle de vie des appels 1-1, signalisation WebRTC, mesures de qualité | `calls`, `call_participants`, `call_quality_samples` | [`calls.json`](api/openapi/calls.json) | `call:*`, `rtc:*` (dans `realtime/calls.ts`) |
+| `turn` | identifiants TURN éphémères | aucune | [`turn.json`](api/openapi/turn.json) | aucun |
+| _transverse_ | passerelle Socket.IO (`realtime/`), authentification des requêtes, limitation de débit, accès aux données (`db/`), erreurs au format unique, métriques | — | [`plateforme.json`](api/openapi/plateforme.json) (sondes de santé) | `realtime/` |
+
+### 13.2 Interfaces entre modules
+
+Colonne « État » : **port** = interface TypeScript explicite dans le code ; **fonction** = fonction exportée utilisée directement par un autre module (à transformer en port) ; **écart** = un module lit ou importe l'intérieur d'un autre, ce que la règle 2 de l'ADR-0023 interdit.
+
+| Appelant | Appelé | Interface utilisée | Rôle | État |
+| --- | --- | --- | --- | --- |
+| `auth` | temps réel | `SessionEvents.sessionsRevoked(sessionIds)` | fermer les sockets d'une session révoquée | **port** (implémenté par `RealtimeEvents`) |
+| `conversations` | temps réel | `MembershipEvents.memberAdded / memberRoleChanged / memberRemoved` | faire rejoindre ou quitter les rooms en direct | **port** (implémenté par `RealtimeEvents`) |
+| `auth` | Microsoft Entra ID | `MicrosoftClient` (`authorizationUrl`, `exchangeCode`) | connexion OIDC | **port** (adaptateur `EntraIdClient`) |
+| tous les modules protégés | `auth` | `TokenService.verifyAccessToken` via `plugins/authenticate` | authentifier la requête | **fonction** (par le plugin transverse) |
+| tous | transverse | `RateLimiter.hit(key, limit, windowMs)` | limitation de débit | **port** (adaptateurs mémoire, Redis, repli) |
+| `messages` | `conversations` | `requireMember(db, conversationId, userId)` → rôle | autoriser l'accès à une conversation | **fonction** |
+| `messages` | `conversations` | `toIso(value)` | format de date | **écart** (utilitaire à déplacer dans le transverse) |
+| `calls` (signalisation) | `conversations` | `requireMember(...)` | autoriser un appel | **fonction** |
+| `calls` (signalisation) | `conversations` | lecture directe de la table `conversations` (type privé) | vérifier qu'un appel est 1-1 | **écart** (à exposer par un port) |
+| `conversations` | `users` | lecture directe de la table `users` (profils des membres, recherche) | construire les vues, rechercher | **écart** (port `UserDirectory` à créer) |
+| `users` | `auth` | `toMe` importé de `auth/routes` | construire le profil | **écart** (mapper à déplacer) |
+| temps réel | `messages` | `storeMessage`, `messagesAfter`, `markRead` | gestionnaires `message:send`, `conversation:sync`, `message:read` | **fonction** |
+| `/metrics` (transverse) | `calls` | lecture directe de `call_quality_samples` | métriques de qualité des appels | **écart** |
+| tous | `db/` | client Kysely transmis aux services | accès à PostgreSQL | **écart** vis-à-vis de l'hexagonale (pas de port de dépôt) |
+
+**Ports cibles** (à créer après le cours, un par frontière) : `ConversationAccess` (appartenance et type de conversation, fourni par `conversations` à `messages` et `calls`), `UserDirectory` (profils et recherche, fourni par `users`), `MessagePublisher` (diffusion temps réel d'un message), un dépôt par module (`UserRepository`, `ConversationRepository`, `MessageRepository`, `CallRepository`) et `Clock`. Ces ports remplaceraient les écarts et les fonctions utilisées directement ci-dessus.
+
+Contrats d'événements, communs aux modules : [§ 5.2](#52-événements-socketio). Deux écarts entre ce tableau et le code : `call:media-state` (état micro et caméra relayé entre pairs) existe dans `realtime/calls.ts` et n'est pas dans la § 5.2 ; à l'inverse, `presence:update` et `typing:start` / `typing:stop` y sont décrits mais **ne sont pas implémentés** (aucun gestionnaire dans `apps/api/src`).
+
+### 13.3 Décomposition hexagonale par module
+
+**Lecture des diagrammes.** À gauche, les **adaptateurs entrants** (routes Fastify, gestionnaires Socket.IO) ; au centre, la **couche applicative** (services) et le **domaine** (règles) ; à droite, les **ports sortants** et leurs **adaptateurs**. Trait plein : existe dans le code. Pointillé : cible à extraire. Le domaine ne doit dépendre d'aucun adaptateur.
+
+#### Module `auth`
+
+```mermaid
+flowchart LR
+    subgraph IN["Adaptateurs entrants"]
+        R1["Routes REST /auth/*<br/>routes.ts"]
+        R2["Redirections Microsoft<br/>microsoft-routes.ts"]
+    end
+    subgraph APP["Module auth"]
+        S["Services : inscription, connexion,<br/>rotation du refresh, déconnexion,<br/>connexion Microsoft"]
+        D["Domaine : unicité du compte,<br/>rotation par famille de jetons,<br/>détection de réutilisation,<br/>durées de vie"]
+    end
+    subgraph OUT["Ports sortants"]
+        P1(["MicrosoftClient"])
+        P2(["SessionEvents"])
+        P3(["RateLimiter"])
+        P4(["TokenService, hachage Argon2id"])
+        P5(["Dépôt utilisateurs et sessions"])
+    end
+    A1["EntraIdClient<br/>(OIDC, PKCE)"]
+    A2["RealtimeEvents<br/>(Socket.IO)"]
+    A3["Mémoire, Redis,<br/>repli"]
+    A4["jose (JWT HS256),<br/>@node-rs/argon2"]
+    A5["Kysely, PostgreSQL"]
+    R1 --> S
+    R2 --> S
+    S --> D
+    S --> P1 --> A1
+    S --> P2 --> A2
+    S --> P3 --> A3
+    S --> P4 --> A4
+    S -.-> P5 -.-> A5
+```
+
+#### Module `users`
+
+```mermaid
+flowchart LR
+    subgraph IN["Adaptateurs entrants"]
+        R1["GET /users/me<br/>users/routes.ts"]
+        R2["GET /users?query=<br/>(dans conversations/routes.ts)"]
+    end
+    subgraph APP["Module users"]
+        S["Services : lire et modifier son profil,<br/>rechercher des utilisateurs"]
+        D["Domaine : profil public,<br/>nom d'utilisateur et e-mail uniques"]
+    end
+    P1(["UserDirectory<br/>(port fourni aux autres modules)"])
+    P2(["UserRepository"])
+    A["Kysely, PostgreSQL"]
+    R1 --> S
+    R2 -.-> S
+    S --> D
+    S -.-> P1
+    S -.-> P2 -.-> A
+```
+
+La recherche d'utilisateurs est aujourd'hui dans `conversations` : à déplacer dans `users` (écart de la § 13.2).
+
+#### Module `conversations`
+
+```mermaid
+flowchart LR
+    subgraph IN["Adaptateurs entrants"]
+        R1["Routes REST /conversations*<br/>conversations/routes.ts"]
+        R2["Handshake Socket.IO<br/>(rooms rejointes d'après la base)"]
+    end
+    subgraph APP["Module conversations"]
+        S["Services : ouvrir une conversation privée,<br/>créer un groupe, ajouter, retirer,<br/>changer un rôle, vues et non-lus"]
+        D["Domaine : rôles owner, admin, member,<br/>succession du propriétaire,<br/>50 membres au plus,<br/>unicité de la paire privée"]
+    end
+    subgraph OUT["Ports sortants"]
+        P1(["MembershipEvents"])
+        P2(["ConversationAccess<br/>(fourni à messages et calls)"])
+        P3(["UserDirectory"])
+        P4(["ConversationRepository"])
+    end
+    A1["RealtimeEvents<br/>(rooms Socket.IO + Redis)"]
+    A2["module users"]
+    A3["Kysely, PostgreSQL<br/>(transactions)"]
+    R1 --> S
+    R2 --> S
+    S --> D
+    S --> P1 --> A1
+    S -.-> P2
+    S -.-> P3 -.-> A2
+    S -.-> P4 -.-> A3
+```
+
+#### Module `messages`
+
+```mermaid
+flowchart LR
+    subgraph IN["Adaptateurs entrants"]
+        R1["GET /conversations/:id/messages<br/>messages/routes.ts"]
+        R2["Socket.IO : message:send,<br/>conversation:sync, message:read<br/>realtime/index.ts"]
+    end
+    subgraph APP["Module messages"]
+        S["Services : stocker un message,<br/>historique, rattrapage, accusé de lecture"]
+        D["Domaine : numéro d'ordre par conversation,<br/>idempotence (client_msg_id),<br/>corps de 1 à 4 000 caractères,<br/>lecture qui ne recule jamais"]
+    end
+    subgraph OUT["Ports sortants"]
+        P1(["ConversationAccess<br/>(requireMember)"])
+        P2(["RateLimiter"])
+        P3(["MessagePublisher"])
+        P4(["MessageRepository"])
+    end
+    A1["module conversations"]
+    A2["Mémoire, Redis"]
+    A3["Socket.IO<br/>(room conv:id, adapter Redis)"]
+    A4["Kysely, PostgreSQL<br/>(une transaction)"]
+    R1 --> S
+    R2 --> S
+    S --> D
+    S --> P1 --> A1
+    S --> P2 --> A2
+    S -.-> P3 -.-> A3
+    S -.-> P4 -.-> A4
+```
+
+Aujourd'hui, la limitation de débit, l'autorisation et la diffusion sont écrites dans le gestionnaire Socket.IO (`realtime/index.ts`) et non dans un service applicatif : c'est la première chose à extraire.
+
+#### Module `calls`
+
+```mermaid
+flowchart LR
+    subgraph IN["Adaptateurs entrants"]
+        R1["POST /calls/:id/quality<br/>calls/routes.ts"]
+        R2["Socket.IO : call:invite, accept, reject,<br/>hangup, media-state, rtc:*<br/>realtime/calls.ts"]
+    end
+    subgraph APP["Module calls"]
+        S["Services : inviter, accepter, refuser,<br/>raccrocher, relayer SDP et ICE,<br/>enregistrer les mesures"]
+        D["Domaine : appel 1-1 en conversation privée,<br/>états sonnerie, actif, terminé,<br/>occupé et délai de sonnerie,<br/>participants actifs seulement,<br/>bornes des mesures"]
+    end
+    subgraph OUT["Ports sortants"]
+        P1(["ConversationAccess"])
+        P2(["CallRepository"])
+        P3(["CallNotifier"])
+        P4(["RateLimiter"])
+        P5(["CallMetrics"])
+    end
+    A1["module conversations"]
+    A2["Kysely, PostgreSQL"]
+    A3["Socket.IO<br/>(room user:id)"]
+    A4["Mémoire, Redis"]
+    A5["call-metrics.ts<br/>(Prometheus)"]
+    R1 --> S
+    R2 --> S
+    S --> D
+    S -.-> P1 -.-> A1
+    S -.-> P2 -.-> A2
+    S -.-> P3 -.-> A3
+    S --> P4 --> A4
+    S --> P5 --> A5
+```
+
+La signalisation vit aujourd'hui dans `realtime/calls.ts` (classe `CallSignaling`), hors du dossier `modules/calls/` qui ne contient que la route des mesures : à rapprocher lors de l'extraction.
+
+#### Module `turn`
+
+```mermaid
+flowchart LR
+    R1["GET /turn/credentials<br/>turn/routes.ts"]
+    subgraph APP["Module turn"]
+        S["Service : émettre des identifiants"]
+        D["Domaine : username = expiration:userId,<br/>credential = HMAC-SHA1(secret partagé),<br/>durée de vie bornée"]
+    end
+    R1 --> S
+    S --> D
+    S --> P1(["RateLimiter"]) --> A1["Mémoire, Redis"]
+    S -.-> P2(["Configuration TURN<br/>(secret, URL, durée)"]) -.-> A2["Variables d'environnement"]
+    A3["coturn<br/>use-auth-secret"] -. "même secret partagé" .- A2
+```
+
+Ce module n'a pas de base de données : il est le plus proche d'un service autonome et ne dépend d'aucun autre module.
+
+### 13.4 Interfaces OpenAPI 3.0 par module
+
+Les spécifications sont dans [`docs/api/openapi/`](api/openapi/) : une par module (`auth`, `users`, `conversations`, `messages`, `calls`, `turn`, `plateforme`) et une complète (`openapi.json`). Elles sont **générées par le code** et non écrites à la main, pour ne pas diverger des routes :
+
+```bash
+pnpm --filter @chatisen/api openapi
+```
+
+- **Comment** : le script `apps/api/src/openapi/generate.ts` démarre l'application sans base de données, relève chaque route par le hook `onRoute` de Fastify, convertit les schémas TypeBox (déjà du JSON Schema) en OpenAPI 3.0 et écrit un fichier par module. Aucune dépendance n'est ajoutée.
+- **Ce qu'elles décrivent** : chemins, méthodes, paramètres, corps de requête, réponses, schémas, authentification par jeton (`bearerAuth`), exigences (`x-requirements`) et le format d'erreur unique (`4XX`/`5XX`).
+- **Vérifié** : les huit fichiers passent la validation de `swagger-parser` (OpenAPI 3.0.3). La conformité de l'API à sa spécification n'est pas encore testée en CI.
+- **Hors périmètre** : les événements Socket.IO (décrits en [§ 5.2](#52-événements-socketio)), `/metrics` (réseau interne) et les redirections de la connexion Microsoft, dont le détail des réponses n'est pas typé par un schéma.
+- **Limites** : les réponses `204`, `302` et `303` sont déclarées à la main dans le script ; une route ajoutée sans entrée dans la table `DOC` du script fait échouer la génération, ce qui oblige à la documenter.
