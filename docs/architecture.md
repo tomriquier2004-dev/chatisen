@@ -440,11 +440,14 @@ Tous les schémas sont définis **une seule fois** dans `packages/shared` et imp
 | GET | `/auth/providers` | Fournisseurs de connexion activés (`microsoft: true/false`) | FR-01 |
 | GET | `/auth/microsoft/start` | Redirection vers Microsoft (PKCE, `state`, `nonce` en cookie signé) | FR-01 (ADR-0020) |
 | GET | `/auth/microsoft/callback` | Retour de Microsoft → session ChatISEN, redirection vers `/` ou `/?authError=` | FR-01, FR-04 (ADR-0020) |
-| GET | `/users/me` · PATCH `/users/me` | Profil | FR-02 |
+| GET | `/users/me` | Profil de l'utilisateur courant (la modification du profil, `PATCH /users/me`, n'est pas implémentée) | FR-02 |
 | GET | `/users?query=` | Recherche d'utilisateurs | FR-02 |
 | GET | `/conversations` | Conversations de l'utilisateur + non-lus | FR-06 |
 | POST | `/conversations` | Créer une conversation privée ou de groupe | FR-06, FR-16 |
-| POST · DELETE | `/conversations/:id/members[/:userId]` | Gérer les membres (rôle requis) | FR-03, FR-16 |
+| GET | `/conversations/:id` | Détail d'une conversation | FR-06 |
+| POST | `/conversations/:id/members` | Ajouter un membre (propriétaire ou admin) | FR-03, FR-16 |
+| PATCH | `/conversations/:id/members/:userId` | Changer le rôle d'un membre (propriétaire) | FR-16 |
+| DELETE | `/conversations/:id/members/:userId` | Retirer un membre ou quitter | FR-03, FR-16 |
 | GET | `/conversations/:id/messages?before=<seq>&limit=` | Historique paginé | FR-08 |
 | GET | `/turn/credentials` | Identifiants TURN éphémères | FR-09, FR-10 |
 | POST | `/calls/:id/quality` | Envoi groupé d'échantillons `getStats` par un participant actif (1 à 60 échantillons, 30 lots/minute/utilisateur) | FR-13, NFR-04 |
@@ -699,7 +702,7 @@ Version du 25 novembre 2026, après la review de Tom. Cette section sert à **tr
 - **J1** (27 novembre) : une seule VM, tout dans le Compose, ce qu'on peut déployer sûrement.
 - **Cible** : load balancer réseau qui porte l'IP (**retenu par l'équipe**, consigne du prof), VM TURN séparée (consigne du prof, ADR-0016 à amender), base sur Cloud SQL pour PostgreSQL (**décidée**, ADR-0017), copie des sauvegardes dans un bucket Cloud Storage. Rien n'est à faire avant J1.
 
-`<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`.
+`<IP>` désigne l'IP statique `chatisen-ip` (attachée à la VM en J1, portée par le load balancer en cible). Elle n'est pas écrite dans le dépôt, qui est public. Les schémas draw.io et leurs exports PNG la contiennent : ils ne sont pas versionnés tant qu'elle n'y est pas remplacée par `<IP>`. Les versions de présentation des deux vues, **sans l'IP** et lisibles à l'écran, sont dans [`docs/diagrams/chatisen-architecture.drawio`](diagrams/chatisen-architecture.drawio) (pages « Infrastructure J1 » et « Infrastructure cible »).
 
 État : **existant** (en place ou dans le code) · **proposé** (décidé ou en cours, pas déployé) · **à trancher** · **faiblesse** (en place, à corriger) · **à confirmer** (contradiction entre une décision de l'équipe et le dépôt, voir plus bas) · **manquant**.
 
