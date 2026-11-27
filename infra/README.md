@@ -45,7 +45,7 @@ gcloud compute instances start chatisen-prod --zone=europe-west1-b
 ```
 
 ```powershell
-gcloud compute ssh chatisen-prod --zone=europe-west1-b
+gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
 ```
 
 Éteindre en fin de session :
@@ -84,9 +84,9 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 | --- | --- | --- | --- | --- |
 | 80, 443 | TCP | `chatisen-web` | Caddy : HTTP (redirection, validation du certificat) et HTTPS | ouvert à Internet |
 | 3478 | UDP et TCP | `chatisen-turn` | coturn | ouvert, rien n'écoute avant le déploiement de coturn |
-| 5349 | TCP | `chatisen-turn` | coturn en TLS | ouvert, **pas de service prévu** pour l'instant (ADR-0016) |
+| 5349 | TCP | _retiré de `chatisen-turn` par Terraform_ | coturn en TLS | fermé (ADR-0016) |
 | 49152-49252 | UDP | `chatisen-turn` | relais média de coturn | ouvert, rien n'écoute avant coturn |
-| 22 | TCP | `default-allow-ssh` | SSH (OS Login, clé) | **ouvert à Internet, à restreindre** (IAP) |
+| 22 | TCP | `chatisen-ssh-iap` | SSH (OS Login, clé) par IAP | restreint à `35.235.240.0/20` ; `default-allow-ssh` supprimée le 2026-11-26 ([rapport](../docs/reports/ssh-iap-et-rollback-2026-11-26.md)) |
 | ICMP | | `default-allow-icmp` | ping | ouvert |
 | tout | TCP/UDP | `default-allow-internal` | réseau interne `10.128.0.0/9` | interne seulement |
 | 3389 | TCP | _supprimée le 25/11/2026_ | RDP | fermé |
@@ -94,28 +94,25 @@ gcloud compute firewall-rules list --format="table(name,direction,sourceRanges.l
 
 Jamais exposés à Internet : PostgreSQL (5432), Redis (6379), l'API (3000), Prometheus, Grafana, Loki et les métriques coturn (9641, privées uniquement). Un nouveau port s'ouvre seulement avec une mise à jour de ce tableau et de l'ADR concerné.
 
-## Restreindre le SSH avec IAP (à faire, VM allumée pour tester)
+## Restreindre le SSH avec IAP (fait le 2026-11-26)
 
-Aujourd'hui `default-allow-ssh` laisse le port 22 ouvert à tout Internet. Avec IAP (Identity-Aware Proxy), le SSH passe par un tunnel de Google authentifié par le compte Google : le port 22 n'est alors ouvert qu'aux adresses de Google (`35.235.240.0/20`). Les runners GitHub ont des adresses variables, impossibles à lister : IAP règle aussi ce point pour le futur déploiement.
+Avant le 2026-11-26, `default-allow-ssh` laissait le port 22 ouvert à tout Internet ; elle est supprimée et **toutes les connexions SSH passent par IAP** (`--tunnel-through-iap`). Procédure, à rejouer pour un nouveau membre ou un nouveau projet. Avec IAP (Identity-Aware Proxy), le SSH passe par un tunnel de Google authentifié par le compte Google : le port 22 n'est alors ouvert qu'aux adresses de Google (`35.235.240.0/20`). Les runners GitHub ont des adresses variables, impossibles à lister : IAP règle aussi ce point pour le futur déploiement.
 
 Respecter cet ordre, sinon on se verrouille dehors. Les étapes 1 à 4 s'ajoutent sans rien casser ; seule la 5 ferme l'accès actuel.
 
-1. Activer l'API :
-
-```powershell
-gcloud services enable iap.googleapis.com
-```
-
-2. Autoriser les adresses de Google sur le port 22 :
-
-```powershell
-gcloud compute firewall-rules create chatisen-ssh-iap --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=chatisen
-```
+1. et 2. Activer l'API IAP et autoriser les adresses de Google sur le port 22 : fait par Terraform ([`terraform/network.tf`](terraform/network.tf), ressources `google_project_service.iap` et `google_compute_firewall.ssh_iap`), plus à la main.
 
 3. Sha ou Tom donnent à chaque membre le rôle « Utilisateur de tunnel sécurisé par IAP » (`roles/iap.tunnelResourceAccessor`), un compte à la fois :
 
 ```powershell
 gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE>" --role="roles/iap.tunnelResourceAccessor"
+```
+
+Le tunnel ne suffit pas : la VM tourne avec le compte de service `chatisen-vm`, et OS Login refuse alors la clé (« Server refused our key ») tant que le membre n'a pas aussi « Utilisateur du compte de service » sur ce compte, en plus de « Connexion au système d'exploitation Compute » (constaté le 26/11/2026) :
+
+```powershell
+gcloud iam service-accounts add-iam-policy-binding chatisen-vm@<ID_PROJET>.iam.gserviceaccount.com --member="user:<COMPTE_GOOGLE>" --role="roles/iam.serviceAccountUser"
+gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE>" --role="roles/compute.osLogin"
 ```
 
 4. **Chacun** teste la connexion par le tunnel :
@@ -124,11 +121,7 @@ gcloud projects add-iam-policy-binding <ID_PROJET> --member="user:<COMPTE_GOOGLE
 gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap
 ```
 
-5. Seulement quand tout le monde a réussi, fermer l'accès ouvert à tout Internet :
-
-```powershell
-gcloud compute firewall-rules delete default-allow-ssh
-```
+5. Fait le 26/11/2026 : `default-allow-ssh` est supprimée. Ne pas la recréer, ni à la main ni dans Terraform.
 
 Puis prouver la fermeture depuis un réseau qui laisse sortir le port 22 (la section ci-dessous distingue « filtré » et « refusé »), et consigner la sortie dans `docs/reports/`. Ensuite, ajouter `--tunnel-through-iap` aux commandes `gcloud compute ssh` de ce document. Le bouton « SSH » de la console devrait continuer de fonctionner, car il se connecte depuis des adresses de Google : à vérifier après la fermeture.
 
@@ -246,7 +239,7 @@ sudo IMAGE_TAG=local docker compose -f compose.prod.yml -f compose.build.yml up 
 Grafana et Prometheus n'écoutent que sur `127.0.0.1` de la VM. Depuis ton PC, par tunnel SSH :
 
 ```powershell
-gcloud compute ssh chatisen-prod --zone=europe-west1-b -- -L 3000:localhost:3000
+gcloud compute ssh chatisen-prod --zone=europe-west1-b --tunnel-through-iap -- -L 3000:localhost:3000
 ```
 
 puis ouvrir `http://localhost:3000`. Pour la soutenance, préparer le tunnel à l'avance ou projeter des captures.
@@ -301,7 +294,7 @@ chmod 600 .env
 sudo docker compose --env-file .env -f compose.yml up -d
 ```
 
-Attacher le conteneur API au réseau `chatisen-observability` et configurer `API_HOST=0.0.0.0` dans le conteneur ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
+Relier l'API au réseau `chatisen-observability` avec l'override `infra/compose/compose.observability.yml` (`docker compose -f compose.prod.yml -f compose.observability.yml up -d` ; `API_HOST=0.0.0.0` est déjà réglé dans `compose.prod.yml`) ; Prometheus scrute `api:3000/metrics`. En J1, coturn rejoint le même réseau Docker et la cible est `coturn:9641`. Pour la VM TURN séparée, Prometheus ne peut pas résoudre l'alias Docker distant : configure `targets/coturn.yml` avec `<IP_PRIVEE_VM_TURN>:9641`, et définis `TURN_METRICS_BIND_IP` à cette même IP dans `infra/coturn/.env`. Autorise TCP 9641 depuis la seule VM web dans le pare-feu VPC ; jamais depuis Internet.
 
 Accès opérateur par tunnel SSH, sans ouvrir de port public :
 
